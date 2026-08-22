@@ -64,7 +64,7 @@ hash 的角色是**变更检测器与存储键**，不是多地图管理。saved
 
 trinary 加载：`occ = 1 - color/255`（negate=0）；`occ >= occupied_thresh` → 100，`occ <= free_thresh` → 0，否则 -1；`alpha < 255` 一律 unknown；图像顶行对应地图最大 y，加载后垂直翻转。map_saver 固定写像素 0(occupied)/254(free)/205(unknown) 并配 `occupied_thresh: 0.65, free_thresh: 0.196`（205 借此回读为 unknown）。核心库加载器 `map_io.load_map_file` 与上述行为对齐，仅支持 trinary。
 
-已实现：`src/oomwoo_cleaning_jobs_core`（ament_python）含 `source_map.SourceMap`（identity/掩码）、`map_io`、`segmentation`（watershed 分割）、`render`/`render_map` CLI（`oomwoo-render-map`，`--segment` 出叠加图）；`test/` 下合成地图夹具（`fixtures`：双房间/含未知块/开间/极小房间/开放式双区/N 房间网格/走廊户型）与 42 个 pytest，`colcon build/test` 与直接 `pytest` 均已验证通过。演示输出在 `docs/demo/`（真实 living_room 与合成双房间的分割效果图）。
+已实现：`src/oomwoo_cleaning_jobs_core`（ament_python）含 `source_map.SourceMap`（identity/掩码）、`map_io`、`segmentation`（maximin 淹没 + 合并树鞍部合并 + 门口溢出裁剪 + 门口拓扑记录）、`regions.RegionSet`（掩码编辑：paint/erase/create/delete/rename/merge/split、即时裁剪、后画者抢占、轮廓派生）、`render`/`render_map` CLI（`oomwoo-render-map`，`--segment` 出叠加图）；`test/` 下合成地图夹具（`fixtures`：双房间/含未知块/开间/极小房间/开放式双区/N 房间网格/走廊户型）与 54 个 pytest，`colcon build/test` 与直接 `pytest` 均已验证通过。演示输出在 `docs/demo/`（真实 living_room 与合成双房间的分割效果图）。
 
 分割已知特性：maximin 淹没 + 合并树鞍部合并后，真实 living_room（单房间多家具）在 ratio 0.5–0.8 全区间精确收敛为 1 个候选、0 未分类；5/6/7 房间网格、4 房间+走廊户型、贴墙家具场景均精确分出预期房间数；真门洞（0.5 m）不被误并，宽开口（1.3 m）正确合并。残留边界情形：小房间配宽门（比值 0.6–0.8 区间）可能误并/误分，由 GUI 手动编辑修正；距离值低于 `min_peak_height_m` 的狭窄地带不产生种子，留在未分类；0.5 m 宽的家具缝隙与 0.5 m 门洞在几何上不可区分（语义问题），依赖用户审核候选。
 
