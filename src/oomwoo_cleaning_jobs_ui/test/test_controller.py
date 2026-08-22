@@ -28,19 +28,19 @@ def test_set_source_reports_other_map_region_sets(tmp_path):
 
     message = second.set_source(source_b)
 
-    assert '存在 1 份属于其他地图的区域集' in message
+    assert '1 region set(s) on disk belong to other maps' in message
 
 
 def test_named_rectangle_creates_full_stroke(tmp_path):
     controller = EditorController(); controller.store.root = tmp_path
     controller.set_source(_source()); controller.generate_candidates()
 
-    label, message = controller.create_rectangle(4, 5, 7, 9, '餐桌区')
+    label, message = controller.create_rectangle(4, 5, 7, 9, 'Dining Area')
 
     assert label is not None
-    assert message == '已创建 Region'
+    assert message == 'Region created'
     assert (controller.regions.labels[4:8, 5:10] == label).all()
-    assert controller.regions.names[label] == '餐桌区'
+    assert controller.regions.names[label] == 'Dining Area'
 
 
 def test_virtual_wall_is_stored_and_applied(tmp_path):

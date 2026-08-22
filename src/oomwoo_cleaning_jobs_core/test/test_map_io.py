@@ -1,4 +1,4 @@
-"""map_io 加载器测试：nav2 trinary 保真度。"""
+"""Tests for the map_io loader: nav2 trinary fidelity."""
 
 import cv2
 import numpy as np
@@ -36,19 +36,19 @@ def test_round_trip_saver_convention(tmp_path):
 
 
 def test_pixel_classification_default_thresholds(tmp_path):
-    # 一列一个像素；默认阈值 0.65/0.25 下：
-    # 0 → occ 1.0 → 100；89 → 0.651 → 100；128 → 0.498 → -1；
-    # 200 → 0.216 → 0；240 → 0.059 → 0；255 → 0
+    # one pixel per column; with default thresholds 0.65/0.25:
+    # 0 -> occ 1.0 -> 100; 89 -> 0.651 -> 100; 128 -> 0.498 -> -1;
+    # 200 -> 0.216 -> 0; 240 -> 0.059 -> 0; 255 -> 0
     image = np.array([[0], [89], [128], [200], [240], [255]], dtype=np.uint8)
     loaded = load_map_file(_write_custom_map(tmp_path, image))
     col = loaded.cells[:, 0].tolist()
-    # cells 行序 = 图像上下翻转
+    # cells row order = image flipped vertically
     assert col == [FREE, FREE, FREE, UNKNOWN, OCCUPIED, OCCUPIED]
 
 
 def test_vertical_flip(tmp_path):
     image = np.full((4, 2), PIXEL_FREE, dtype=np.uint8)
-    image[0, :] = PIXEL_OCCUPIED  # 图像顶行 = 地图最大 y
+    image[0, :] = PIXEL_OCCUPIED  # image top row = map maximum y
     loaded = load_map_file(_write_custom_map(tmp_path, image))
     assert loaded.cells[-1, :].tolist() == [OCCUPIED, OCCUPIED]
     assert loaded.cells[0, :].tolist() == [FREE, FREE]
@@ -62,8 +62,8 @@ def test_unknown_pixels_round_trip(tmp_path):
 
 
 def test_alpha_below_255_is_unknown(tmp_path):
-    image = np.full((2, 2, 4), 255, dtype=np.uint8)  # 白色
-    image[0, 0, 3] = 0  # 透明 → unknown
+    image = np.full((2, 2, 4), 255, dtype=np.uint8)  # white
+    image[0, 0, 3] = 0  # transparent -> unknown
     loaded = load_map_file(_write_custom_map(tmp_path, image))
     assert loaded.cells[-1, 0] == UNKNOWN
     assert loaded.cells[-1, 1] == FREE

@@ -1,10 +1,10 @@
-"""render_map CLI：加载地图 → 打印 identity/统计 → 输出渲染 PNG。
+"""render_map CLI: load a map -> print identity/statistics -> write rendered PNGs.
 
-用法（包目录下）::
+Usage (inside the package directory)::
 
     python3 -m oomwoo_cleaning_jobs_core.render_map MAP.yaml [--segment]
 
-colcon 安装后也可用 ``oomwoo-render-map``。
+Also available as ``oomwoo-render-map`` after a colcon install.
 """
 
 from __future__ import annotations
@@ -22,20 +22,20 @@ from .segmentation import SegmentationParams, segment
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog='render_map',
-        description='加载 nav2 trinary 地图，打印元数据/identity/统计并渲染 PNG')
-    p.add_argument('map_yaml', help='map.yaml 路径')
-    p.add_argument('--out', help='底图输出 PNG（默认 <地图名>.render.png）')
-    p.add_argument('--segment', action='store_true', help='同时执行自动分割并输出叠加图')
-    p.add_argument('--seg-out', help='分割叠加图输出 PNG（默认 <地图名>.segments.png）')
-    p.add_argument('--scale', type=int, default=1, help='最近邻放大倍数（默认 1）')
+        description='Load a nav2 trinary map, print metadata/identity/statistics and render PNGs')
+    p.add_argument('map_yaml', help='path to map.yaml')
+    p.add_argument('--out', help='base map output PNG (default <map>.render.png)')
+    p.add_argument('--segment', action='store_true', help='also run auto segmentation and write an overlay image')
+    p.add_argument('--seg-out', help='segmentation overlay output PNG (default <map>.segments.png)')
+    p.add_argument('--scale', type=int, default=1, help='nearest-neighbor upscale factor (default 1)')
     p.add_argument('--min-region-area', type=float, default=1.0,
-                   help='最小区域面积 m²（默认 1.0）')
+                   help='minimum region area in m^2 (default 1.0)')
     p.add_argument('--marker-neighborhood', type=float, default=0.7,
-                   help='局部极大值窗口直径 m（默认 0.7）')
+                   help='local-maximum window diameter in m (default 0.7)')
     p.add_argument('--min-peak-height', type=float, default=0.17,
-                   help='峰最小距离值 m（默认 0.17）')
+                   help='minimum peak distance value in m (default 0.17)')
     p.add_argument('--saddle-merge-ratio', type=float, default=0.8,
-                   help='鞍部合并阈值（默认 0.8；>1.0 近似禁用）')
+                   help='saddle merge threshold (default 0.8; >1.0 effectively disables)')
     return p
 
 
@@ -49,8 +49,8 @@ def main(argv=None) -> int:
     occupied = int(source_map.occupied_mask().sum())
     unknown = int(source_map.unknown_mask().sum())
 
-    print(f'地图文件 : {yaml_path}')
-    print(f'尺寸     : {source_map.width}x{source_map.height} cell '
+    print(f'map file : {yaml_path}')
+    print(f'size     : {source_map.width}x{source_map.height} cells '
           f'({source_map.width * source_map.resolution:.2f} x '
           f'{source_map.height * source_map.resolution:.2f} m) '
           f'@ {source_map.resolution} m/cell')
@@ -63,7 +63,7 @@ def main(argv=None) -> int:
 
     out = Path(args.out) if args.out else yaml_path.with_suffix('.render.png')
     assert cv2.imwrite(str(out), render_source_map(source_map, scale=args.scale))
-    print(f'底图     : {out}')
+    print(f'base map : {out}')
 
     if args.segment:
         params = SegmentationParams(
@@ -73,26 +73,26 @@ def main(argv=None) -> int:
             saddle_merge_ratio=args.saddle_merge_ratio,
         )
         result = segment(source_map, params)
-        print(f'候选区域 : {len(result.regions)} 个')
+        print(f'candidates : {len(result.regions)}')
         for region in result.regions:
-            conf = '低置信' if region.low_confidence else '正常'
-            print(f'  #{region.label}: {region.area_m2:.2f} m² '
-                  f'({region.cell_count} cells), 置信={conf}')
+            conf = 'low' if region.low_confidence else 'normal'
+            print(f'  #{region.label}: {region.area_m2:.2f} m^2 '
+                  f'({region.cell_count} cells), confidence={conf}')
         unclassified = int(result.unclassified_free_mask.sum())
-        print(f'未分类   : {unclassified} cells '
+        print(f'unclassified : {unclassified} cells '
               f'({unclassified / max(free, 1):.1%} of free)')
-        print(f'门口     : {len(result.doorways)} 条拓扑边')
+        print(f'doorways : {len(result.doorways)} topology edges')
         for doorway in result.doorways:
             a, b = doorway.regions
-            mark = '门' if doorway.likely_door else '窄缝'
-            print(f'  #{a} <-> #{b}: 宽 {doorway.width_m:.2f} m, '
+            mark = 'door' if doorway.likely_door else 'slit'
+            print(f'  #{a} <-> #{b}: width {doorway.width_m:.2f} m, '
                   f'clearance {doorway.clearance_m:.2f} m, '
                   f'ratio {doorway.ratio:.2f} [{mark}]')
         seg_out = (Path(args.seg_out) if args.seg_out
                    else yaml_path.with_suffix('.segments.png'))
         assert cv2.imwrite(
             str(seg_out), render_segmentation(source_map, result, scale=args.scale))
-        print(f'分割图   : {seg_out}')
+        print(f'segments : {seg_out}')
 
     return 0
 

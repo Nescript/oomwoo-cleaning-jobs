@@ -1,18 +1,23 @@
-"""Region 掩码编辑（draft Region Set）。
+"""Region mask editing (draft Region Set).
 
-对应 docs/DEVELOPMENT.md「第一阶段实施决定 · Region 表示与编辑语义」：
+See docs/DEVELOPMENT.md "Phase 1 implementation decisions - Region
+representation and editing semantics":
 
-- Region 内部表示为 bitmask（labels 数组），天然支持孔洞与离散组件；
-  几何轮廓由 ``cv2.findContours`` 派生，仅用于 GUI 显示与导出。
-- **编辑时即时裁剪**：用户画的是意图，系统存的是 ``意图 ∩ Cleanable
-  Space``；裁空则该编辑动作无效（返回 False/None，不产生副作用）。
-- **后画者抢占**：压到已有 Region 的笔画，重叠 cell 从旧 Region 扣除
-  归新 Region（GUI 负责显著提示旧 Region 被改小）。
-- 合并为显式操作，不依赖先画出重叠；拆分为画线/画圈切割。
-- 只存裁剪后掩码，不存原始笔画。
+- A Region is represented internally as a bitmask (labels array), naturally
+  supporting holes and disjoint components; geometric outlines are derived
+  via ``cv2.findContours`` and used only for GUI display and export.
+- **Immediate clipping at edit time**: the user paints intent; the system
+  stores ``intent & Cleanable Space``; a stroke clipped to empty makes the
+  edit a no-op (returns False/None with no side effects).
+- **Later-painter preemption**: a stroke overlapping an existing Region
+  transfers the overlapping cells from the old Region to the new one (the
+  GUI must prominently indicate that the old Region shrank).
+- Merge is an explicit operation, not triggered by painting overlap; split
+  works by drawing a cut line/circle.
+- Only the clipped mask is stored, never the raw stroke.
 
-labels 约定与 segmentation 一致：0 = 未划分（UNASSIGNED）。
-Keepout（#6）接入时只需把 cleanable 改为 ``free & ~keepout``。
+labels convention matches segmentation: 0 = unassigned (UNASSIGNED).
+When Keepout (#6) is wired in, cleanable simply becomes ``free & ~keepout``.
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ from scipy import ndimage
 
 from .segmentation import SegmentationResult
 
-#: labels 数组中"未划分"的取值
+#: labels value for "unassigned"
 UNASSIGNED = 0
 
 
@@ -38,7 +43,7 @@ class RegionInfo:
 
 
 class RegionSet:
-    """一张 Source Map 的 draft Region 集合（掩码权威）。"""
+    """Draft Region set of one Source Map (mask is authoritative)."""
 
     def __init__(
         self,
@@ -55,7 +60,7 @@ class RegionSet:
         base_cleanable = (cleanable if base_cleanable is None
                           else np.asarray(base_cleanable, dtype=bool))
         if labels.shape != cleanable.shape or labels.shape != base_cleanable.shape:
-            raise ValueError('labels、cleanable 与 base_cleanable 形状必须一致')
+            raise ValueError('labels, cleanable and base_cleanable shapes must match')
         self.labels = labels
         self.base_cleanable = base_cleanable.copy()
         self.keepout_mask = np.zeros(labels.shape, dtype=bool)
@@ -76,11 +81,14 @@ class RegionSet:
         base_cleanable: np.ndarray | None = None,
         keepout_mask: np.ndarray | None = None,
     ) -> RegionSet:
-        """从自动分割结果初始化 draft（候选区域转为可编辑 Region）。
+        """Initialize a draft from an automatic segmentation result (candidate
+        regions become editable Regions).
 
-        分割若已排除 Keepout，调用者必须同时传入原始 free mask 作为
-        ``base_cleanable`` 及当前约束 mask，才能在日后移除约束时正确恢复
-        可清扫空间；被裁掉的 Region cell 仍不会自动复活。
+        If segmentation already excluded Keepout, the caller must also pass
+        the original free mask as ``base_cleanable`` plus the current
+        constraint mask, so cleanable space can be restored correctly when
+        constraints are later removed; clipped-away Region cells are not
+        resurrected automatically.
         """
         cleanable = result.free_mask if cleanable is None else cleanable
         names = {r.label: f'Region {r.label}' for r in result.regions}
@@ -94,7 +102,7 @@ class RegionSet:
             keepout_mask=keepout_mask,
         )
 
-    # ---- 查询 ----
+    # ---- Queries ----
 
     def regions(self) -> list[RegionInfo]:
         out = []
@@ -113,14 +121,17 @@ class RegionSet:
 
     @property
     def unassigned_cleanable_mask(self) -> np.ndarray:
-        """可清扫但未划分给任何 Region 的 cell（GUI 必须显著呈现）。"""
+        """Cells that are cleanable but assigned to no Region (the GUI must
+        display them prominently)."""
         return self.cleanable & (self.labels == UNASSIGNED)
 
     def outline(self, label: int) -> list[np.ndarray]:
-        """派生几何轮廓（map frame，米）：[外环, 孔洞1, ...]，每个为 (N, 2) float。
+        """Derived geometric outline (map frame, meters):
+        [outer ring, hole 1, ...], each an (N, 2) float array.
 
-        坐标约定：``(x, y) = origin.xy + R(origin.yaw) *
-        ((col+0.5)*res, (row+0.5)*res)``；cells row 0 是本地地图的最底行。
+        Coordinate convention: ``(x, y) = origin.xy + R(origin.yaw) *
+        ((col+0.5)*res, (row+0.5)*res)``; cells row 0 is the bottom row of
+        the local map.
         """
         self._require(label)
         mask = self.mask_of(label).astype(np.uint8)
@@ -128,8 +139,9 @@ class RegionSet:
             mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return []
-        # findContours 返回 (x=col, y=row 图像序)；本数组 row 0 = 底行，
-        # 与 map frame 同向，无需翻转
+        # findContours returns (x=col, y=row in image order); in this array
+        # row 0 = bottom row, same orientation as the map frame, no flip
+        # needed
         res = self.resolution
         ox, oy, yaw = self.origin
         cos_yaw = np.cos(yaw)
@@ -144,17 +156,20 @@ class RegionSet:
             rings.append(np.stack([xs, ys], axis=1))
         return rings
 
-    # ---- 空间约束 ----
+    # ---- Spatial constraints ----
 
     def apply_keepout_mask(self, keepout_mask: np.ndarray) -> None:
-        """应用当前 Keepout 并即时裁掉受限 Region cell。
+        """Apply the current Keepout and immediately clip restricted Region
+        cells.
 
-        移除约束只恢复可清扫空间，不恢复曾被裁掉的 Region cell，避免把用户
-        已明确移除的内容或已被其他操作接管的内容凭空写回。
+        Removing a constraint only restores cleanable space; it does not
+        restore previously clipped Region cells, so content the user
+        explicitly removed or that another operation took over is never
+        written back out of thin air.
         """
         keepout_mask = np.asarray(keepout_mask, dtype=bool)
         if keepout_mask.shape != self.labels.shape:
-            raise ValueError('keepout_mask 与 RegionSet 形状不一致')
+            raise ValueError('keepout_mask shape must match the RegionSet grid')
         self.keepout_mask = keepout_mask.copy()
         self.cleanable = self.base_cleanable & ~self.keepout_mask
         self.labels[~self.cleanable] = UNASSIGNED
@@ -163,23 +178,26 @@ class RegionSet:
             if (self.labels == label).any()
         }
 
-    # ---- 编辑操作 ----
+    # ---- Editing operations ----
 
     def paint(self, label: int, stroke: np.ndarray) -> bool:
-        """画笔加 cell：裁剪到 Cleanable Space，压到已有 Region 的部分抢占。
+        """Brush-add cells: clip to Cleanable Space; overlap with an existing
+        Region is preempted.
 
-        裁空（笔画全在障碍/未知/Keepout 上）则无效，返回 False。
+        A stroke clipped to empty (entirely on occupied/unknown/Keepout) is
+        a no-op and returns False.
         """
         self._require(label)
         cells = np.asarray(stroke, dtype=bool) & self.cleanable
         if not cells.any():
             return False
-        self.labels[cells] = label  # 覆盖即抢占
+        self.labels[cells] = label  # overwrite = preemption
         self._prune_empty_names()
         return True
 
     def create(self, stroke: np.ndarray, name: str | None = None) -> int | None:
-        """从笔画创建新 Region（裁剪 + 抢占同 paint）。裁空返回 None。"""
+        """Create a new Region from a stroke (same clipping + preemption as
+        paint). Returns None when clipped to empty."""
         cells = np.asarray(stroke, dtype=bool) & self.cleanable
         if not cells.any():
             return None
@@ -190,9 +208,11 @@ class RegionSet:
         return label
 
     def erase(self, label: int, stroke: np.ndarray) -> bool:
-        """画笔减 cell：从 Region 移除笔画覆盖的 cell（变为未划分）。
+        """Brush-remove cells: remove stroke-covered cells from the Region
+        (they become unassigned).
 
-        减空后 Region 自动删除（不留零 cell Region）。
+        A Region emptied this way is deleted automatically (no zero-cell
+        Regions are kept).
         """
         self._require(label)
         self.labels[self.mask_of(label) & np.asarray(stroke, dtype=bool)] = UNASSIGNED
@@ -201,7 +221,8 @@ class RegionSet:
         return True
 
     def merge(self, target: int, source: int) -> bool:
-        """显式合并：source 的全部 cell 并入 target，source 删除。"""
+        """Explicit merge: all cells of source move into target; source is
+        deleted."""
         self._require(target)
         self._require(source)
         if target == source:
@@ -211,9 +232,11 @@ class RegionSet:
         return True
 
     def split(self, label: int, cut: np.ndarray) -> list[int] | None:
-        """画线/画圈拆分：cut 覆盖的 cell 移出 Region（变为未划分），
-        剩余部分按 8-连通分成若干片；最大片保留原 label 与名称，
-        其余成为新 Region（名称派生）。不足两片返回 None（无效）。
+        """Split by a drawn line/circle: cells covered by cut leave the
+        Region (become unassigned); the remainder is split into 8-connected
+        pieces. The largest piece keeps the original label and name; the
+        rest become new Regions (derived names). Returns None when fewer
+        than two pieces result (invalid).
         """
         self._require(label)
         remaining = self.mask_of(label) & ~np.asarray(cut, dtype=bool)
@@ -225,7 +248,8 @@ class RegionSet:
         order = np.argsort(-counts)
         name = self.names.get(label, f'Region {label}')
         result_labels = [label]
-        # 最大片保留原 label；先清空整个 Region 再逐片重写
+        # The largest piece keeps the original label; clear the whole
+        # Region first, then rewrite piece by piece
         largest = int(order[0])
         self.labels[self.mask_of(label)] = UNASSIGNED
         self.labels[components == largest] = label
@@ -240,7 +264,7 @@ class RegionSet:
         return result_labels
 
     def delete(self, label: int) -> bool:
-        """删除 Region：全部 cell 变为未划分。"""
+        """Delete a Region: all its cells become unassigned."""
         self._require(label)
         self.labels[self.labels == label] = UNASSIGNED
         self.names.pop(label, None)
@@ -251,7 +275,7 @@ class RegionSet:
         self.names[label] = name
         return True
 
-    # ---- 内部 ----
+    # ---- Internals ----
 
     def _prune_empty_names(self) -> None:
         self.names = {
@@ -261,7 +285,7 @@ class RegionSet:
 
     def _require(self, label: int) -> None:
         if not self.mask_of(label).any():
-            raise ValueError(f'Region {label} 不存在或为空')
+            raise ValueError(f'Region {label} does not exist or is empty')
 
     def _next_label(self) -> int:
         current = [int(v) for v in np.unique(self.labels) if v != UNASSIGNED]

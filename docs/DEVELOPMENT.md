@@ -1,14 +1,14 @@
-# oomwoo_cleaning_jobs 开发上下文
+# oomwoo_cleaning_jobs development context
 
-这是本仓库唯一的开发上下文。它记录当前范围、已作决定、术语和开放边界；修改实现或设计前先完整阅读本文档。用户的即时指令和已验证的源码事实优先于本文档，并应随后回写本文档。
+This is the single development context for this repository. It records the current scope, decisions made, terminology, and open boundaries; read it in full before changing implementation or design. The user's immediate instructions and verified source-code facts take precedence over this document and must be written back into it afterwards.
 
-## 目标与范围
+## Goal and scope
 
-`oomwoo_cleaning_jobs` 负责**已保存地图上的用户清洁意图和长任务编排**：whole-map、选定 Region 和 spot 清洁；Region/virtual wall/keepout 持久化；Job 的状态、暂停、恢复、重试和汇总。
+`oomwoo_cleaning_jobs` owns **user cleaning intent and long-running job orchestration on saved maps**: whole-map, selected-Region, and spot cleaning; Region/virtual wall/keepout persistence; Job state, pause, resume, retry, and summary.
 
-它不拥有覆盖路径规划或底盘执行算法。常规 saved-map 覆盖复用 `oomwoo_coverage`；Nav2 是运动执行层。`clean-and-map` 仅是 first-clean（SLAM、探索和覆盖）的 RFC/算法参考，不是 saved-map Job 的后端或 coverage-progress 提供者。`floor-care` 是未来的 perimeter/edge pass；它可与 `oomwoo_coverage` 的 interior sweep 组合，但不是通用 coverage backend。
+It does not own coverage path planning or base execution algorithms. Regular saved-map coverage reuses `oomwoo_coverage`; Nav2 is the motion execution layer. `clean-and-map` is only an RFC/algorithm reference for first-clean (SLAM, exploration, and coverage), not the backend or coverage-progress provider for saved-map Jobs. `floor-care` is a future perimeter/edge pass; it can be combined with `oomwoo_coverage`'s interior sweep but is not a general coverage backend.
 
-外部事实来源：
+External sources of truth:
 
 - [cleaning-jobs RFC](https://github.com/makerspet/oomwoo/tree/main/contributions/cleaning-jobs)
 - [clean-and-map RFC](https://github.com/makerspet/oomwoo/tree/main/contributions/clean-and-map)
@@ -16,154 +16,154 @@
 - [oomwoo-ros2-tools](https://github.com/makerspet/oomwoo-ros2-tools)
 - [SOFTWARE_INTERFACES.md](https://github.com/makerspet/oomwoo/blob/main/docs/SOFTWARE_INTERFACES.md)
 
-## 当前阶段
+## Current phase
 
-第一阶段只交付：
+Phase 1 delivers only:
 
-`已保存地图 → 自动候选区域 → 手动编辑 → 校验 → Published Region Set 持久化`
+`saved map → automatic candidate regions → manual editing → validation → Published Region Set persistence`
 
-输入为 `nav_msgs/msg/OccupancyGrid`，两条获取路径：核心库直接解析 nav2 trinary 格式的 `map.yaml + 图像`（供测试与 CLI）；GUI 运行时订阅 `/map`（transient_local QoS）或打开地图文件。已知自由单元可清扫，未知和障碍不可清扫。
+Input is `nav_msgs/msg/OccupancyGrid`, obtained via two paths: the core library directly parses nav2 trinary `map.yaml + image` (for tests and the CLI); the GUI subscribes to `/map` at runtime (transient_local QoS) or opens a map file. Known-free cells are cleanable; unknown and occupied are not.
 
-第一阶段不驱动机器人、不执行完整 Job，也不冻结执行器 action 或 feedback 定义。验证用 GUI 为 `oomwoo_cleaning_jobs_ui`（PyQt5 独立应用，位于本仓库 `src/` 下），不是最终控制 App。
+Phase 1 does not drive the robot, does not execute full Jobs, and does not freeze executor action or feedback definitions. The verification GUI is `oomwoo_cleaning_jobs_ui` (a standalone PyQt5 application under `src/` in this repository), not the final control app.
 
-## 领域模型
+## Domain model
 
-| 术语 | 含义 |
+| Term | Meaning |
 |---|---|
-| Source Map | 不可变的已保存 OccupancyGrid；identity 由元数据与 cell 数据的内容 hash 派生，hash 变更即视为新地图。 |
-| Cleanable Space | Source Map 内已知自由且允许清扫的空间。 |
-| Region | Cleanable Space 的命名部分，以栅格掩码为权威表示（支持孔洞与离散组件）；几何轮廓由掩码派生，仅用于 GUI 与导出。 |
-| Candidate Region | 自动划分或编辑中、尚未审核的 Region。 |
-| Region Set | 属于一张 Source Map 的、版本化 Region 和空间约束集合。 |
-| Published Region Set | 已通过校验，可用于生成 Job 的 Region Set。 |
-| Keepout / Virtual Wall | 不修改 Source Map 的独立持久化约束；Virtual Wall 是线状 Keepout。 |
-| Segment | Job 中由一种清洁策略处理的目标部分；不必等同一个 Region。 |
-| Coverage artifact | 可校验的已覆盖空间记录（例如 coverage grid）；百分比本身不是 artifact。 |
+| Source Map | Immutable saved OccupancyGrid; identity is derived from a content hash of metadata and cell data — a hash change means a new map. |
+| Cleanable Space | Known-free, cleaning-allowed space within the Source Map. |
+| Region | Named part of the Cleanable Space, with a raster mask as the authoritative representation (supports holes and disjoint components); geometric outlines are derived from the mask and used only for GUI and export. |
+| Candidate Region | A Region produced by automatic partitioning or under editing, not yet reviewed. |
+| Region Set | Versioned set of Regions and spatial constraints belonging to one Source Map. |
+| Published Region Set | A Region Set that has passed validation and can be used to generate Jobs. |
+| Keepout / Virtual Wall | Independently persisted constraints that do not modify the Source Map; a Virtual Wall is a line-shaped Keepout. |
+| Segment | Part of a Job's target handled by one cleaning strategy; not necessarily equal to a Region. |
+| Coverage artifact | Verifiable record of covered space (e.g. a coverage grid); a percentage by itself is not an artifact. |
 
-自动划分是可替换策略（当前为距离变换 + maximin 淹没分水岭，见「第一阶段实施决定 · 自动分割」），置信不足时退化为连通自由空间，并显式标出不确定/未分类区域。
+Automatic partitioning is a replaceable strategy (currently distance transform + maximin flooding watershed, see "Phase 1 implementation decisions · Automatic segmentation"); when confidence is insufficient it degrades to connected free space and explicitly marks uncertain/unclassified areas.
 
-手动编辑至少支持创建、移动/删除/重命名、合并/拆分 Region，以及创建 Keepout/Virtual Wall。编辑时的即时裁剪与发布时的校验分级见「第一阶段实施决定」。允许未划分或故意不清扫的自由空间，但 GUI 必须明确呈现。
+Manual editing supports at least create, move/delete/rename, merge/split of Regions, and creation of Keepout/Virtual Wall. Immediate clipping during editing and validation grading at publish time are described in "Phase 1 implementation decisions". Unassigned or deliberately uncleaned free space is allowed, but the GUI must present it clearly.
 
-GUI 主流程已调整为：**自动分割 → 逐个命名候选 Region → 保存/校验并发布**。候选生成后立即按 label 顺序弹出命名对话框；取消可稍后从「逐个命名候选」继续。新建、绘制、擦除、合并、拆分和约束编辑均收纳在默认折叠的「高级编辑（仅在候选有误时使用）」中，仍作为自动分割误差的修正手段。
+The GUI main flow is now: **automatic segmentation → name candidate Regions one by one → save/validate and publish**. Immediately after candidates are generated, naming dialogs pop up in label order; canceling can be resumed later from "Name candidates one by one". Create, paint, erase, merge, split, and constraint editing live in the collapsed-by-default "Advanced editing (use only when candidates are wrong)" section, still serving as the correction mechanism for automatic segmentation errors.
 
-## 第一阶段实施决定
+## Phase 1 implementation decisions
 
-以下决定于 2026-08-22 与用户逐条确认（grilling 讨论）；修改前需重新与用户确认。
+The following decisions were confirmed point by point with the user on 2026-08-22 (grilling discussion); re-confirm with the user before changing them.
 
-### 包结构
+### Package structure
 
-- `src/oomwoo_cleaning_jobs_core`：纯 Python 库，零 ROS 依赖。含地图文件加载、自动分割、掩码编辑、约束、校验与持久化，可无头 pytest。
-- `src/oomwoo_cleaning_jobs_ui`：PyQt5 独立应用 + rclpy 节点，薄适配层。
-- `oomwoo_cleaning_interfaces` 推迟到首次出现真实跨进程消息需求（预计阶段二）再建。
+- `src/oomwoo_cleaning_jobs_core`: pure Python library, zero ROS dependencies. Contains map file loading, automatic segmentation, mask editing, constraints, validation, and persistence; testable with headless pytest.
+- `src/oomwoo_cleaning_jobs_ui`: standalone PyQt5 application + rclpy node, thin adaptation layer.
+- `oomwoo_cleaning_interfaces` is deferred until the first real cross-process message need (expected in phase 2).
 
-### 地图 identity 与变更检测
+### Map identity and change detection
 
-identity = SHA-256(`resolution` 的 **float32** 字节 + `width` + `height` + `origin` position/orientation + 原始 int8 cell 数据)，排除 `header.stamp`、`frame_id`、`map_load_time`，不做三值化。短 id 取前 12 位。resolution 规范化为 float32：`OccupancyGrid.info.resolution` 是 float32 而 map.yaml 是 float64，不规范化时同一张地图经话题与经文件加载会得到不同 identity（已在 GUI 双来源验证中修复）。
+identity = SHA-256(**float32** bytes of `resolution` + `width` + `height` + `origin` position/orientation + raw int8 cell data), excluding `header.stamp`, `frame_id`, `map_load_time`, with no trinarization. The short id is the first 12 hex digits. Resolution is normalized to float32: `OccupancyGrid.info.resolution` is float32 while map.yaml is float64 — without normalization the same map loaded via topic and via file would get different identities (fixed during GUI dual-source verification).
 
-hash 的角色是**变更检测器与存储键**，不是多地图管理。saved map 视为静态制品，唯一变更来源是用户重新建图/保存。hash 变化即新地图：找不到对应 Region Set 时 GUI 明确提示「当前地图无区域集；磁盘上存在 N 份属于其他地图的区域集」。阶段一不做区域集迁移/重投影（原点与分辨率可能全变，像素级迁移不可靠），见未决边界 9。
+The hash acts as a **change detector and storage key**, not as multi-map management. A saved map is treated as a static artifact; the only source of change is the user re-mapping/re-saving. A hash change means a new map: when no matching Region Set is found, the GUI clearly states "no region set for the current map; N region sets belonging to other maps exist on disk". Phase 1 does not migrate/reproject region sets (origin and resolution may both change, making pixel-level migration unreliable); see open boundary 9.
 
-### 地图文件加载保真约定（已核实 nav2 jazzy map_io.cpp）
+### Map file loading fidelity convention (verified against nav2 jazzy map_io.cpp)
 
-trinary 加载：`occ = 1 - color/255`（negate=0）；`occ >= occupied_thresh` → 100，`occ <= free_thresh` → 0，否则 -1；`alpha < 255` 一律 unknown；图像顶行对应地图最大 y，加载后垂直翻转。map_saver 固定写像素 0(occupied)/254(free)/205(unknown) 并配 `occupied_thresh: 0.65, free_thresh: 0.196`（205 借此回读为 unknown）。核心库加载器 `map_io.load_map_file` 与上述行为对齐，仅支持 trinary。
+Trinary loading: `occ = 1 - color/255` (negate=0); `occ >= occupied_thresh` → 100, `occ <= free_thresh` → 0, otherwise -1; `alpha < 255` is always unknown; the image's top row corresponds to the map's maximum y, so the map is flipped vertically after loading. map_saver always writes pixels 0 (occupied)/254 (free)/205 (unknown) with `occupied_thresh: 0.65, free_thresh: 0.196` (205 thereby reads back as unknown). The core loader `map_io.load_map_file` matches this behavior and supports trinary only.
 
-已修正外部 `oomwoo_sim_support/maps/test_room` 资产链路：PGM 本身以 205 正确表示墙外 unknown，但此前 YAML 使用 `free_thresh: 0.25`，会把 205（occ≈0.196）误判为 free，因而生成墙外候选区域。生成脚本与 sim/deploy YAML 已统一为 `free_thresh: 0.196`。
+Fixed the external `oomwoo_sim_support/maps/test_room` asset chain: the PGM correctly represents outside-wall unknown as 205, but the YAML previously used `free_thresh: 0.25`, which misread 205 (occ≈0.196) as free and produced candidate regions outside the walls. The generation script and the sim/deploy YAMLs are now unified at `free_thresh: 0.196`.
 
-### 自动分割
+### Automatic segmentation
 
-距离变换 + 分水岭（OpenCV/scipy 实现）：free mask → distance transform → 局部极大值 markers → **maximin（最宽路径）淹没**（自实现，只在自由空间传播——`cv2.watershed` 在全图淹没会穿墙导致区域溢出，已弃用；瓶颈优先级相同按到种子的测地距离决胜，分界线落在门洞/鞍部处）→ 面积合并（小于 `min_region_area`，默认 1 m²，并入**连接最宽**的邻域——按共享边界长度会穿门漏并，已弃用）→ **鞍部合并**（`_connection_values` 超水平集合并树给出与分界线无关的真实山口高度；山口 ≥ `saddle_merge_ratio`（默认 0.8）× 较小峰高时并查集合并；真门洞比值通常 < 0.5，同片开阔地的伪分割 > 0.8）→ **门口溢出裁剪**（`_clip_doorway_spills`：maximin 会把门两侧 dist 低于门鞍的 cell 分给对门区域形成溢出带；此处对每对相邻区域在合并树山口 cell 处生成切割线，暂时阻断后把落在对方连通体的 cell 重归对方，边界强制对齐门洞）→ 脊线标记（接触带两侧各一层 cell 标为未分类）。distance peaks 退化（大开间单峰）时整体作为单一候选并标低置信。阈值均为参数。该算法是「先用它看效果」的初始策略，可替换。
+Distance transform + watershed (OpenCV/scipy implementation): free mask → distance transform → local-maxima markers → **maximin (widest-path) flooding** (self-implemented, propagates only within free space — `cv2.watershed` floods the whole image, crosses walls, and spills regions; deprecated; ties on bottleneck priority are broken by geodesic distance to the seed, so boundaries land on doorways/saddles) → area merge (regions below `min_region_area`, default 1 m², merge into the **most widely connected** neighbor — merging by shared boundary length leaks through doors; deprecated) → **saddle merge** (`_connection_values` superlevel-set merge tree gives the true saddle height independent of the boundary line; union-find merge when saddle ≥ `saddle_merge_ratio` (default 0.8) × the smaller peak height; real doorways typically have ratio < 0.5, spurious splits of the same open area > 0.8) → **doorway spill clipping** (`_clip_doorway_spills`: maximin flooding assigns cells on both sides of a door whose dist is below the door saddle to the opposite region, forming spill bands; for each adjacent pair a cut line is generated at the merge-tree saddle cell, temporarily blocked, and cells landing in the other component are reassigned to it, forcing the boundary onto the doorway) → ridge marking (one layer of cells on each side of the contact band is marked unclassified). When distance peaks degenerate (single peak in a large open room), the whole area becomes a single candidate marked low-confidence. All thresholds are parameters. This algorithm is an initial "use it and see" strategy and is replaceable.
 
-分割已知特性：maximin 淹没 + 合并树鞍部合并后，真实 living_room（单房间多家具）在 ratio 0.5–0.8 全区间精确收敛为 1 个候选、0 未分类；5/6/7 房间网格、4 房间+走廊户型、贴墙家具场景均精确分出预期房间数；真门洞（0.5 m）不被误并，宽开口（1.3 m）正确合并。残留边界情形：小房间配宽门（比值 0.6–0.8 区间）可能误并/误分，由 GUI 手动编辑修正；距离值低于 `min_peak_height_m` 的狭窄地带不产生种子，留在未分类；0.5 m 宽的家具缝隙与 0.5 m 门洞在几何上不可区分（语义问题），依赖用户审核候选。
+Known segmentation behavior: after maximin flooding + merge-tree saddle merge, the real living_room (single room with furniture) converges to exactly 1 candidate and 0 unclassified across the full ratio 0.5–0.8 range; 5/6/7-room grids, the 4-room + corridor apartment, and wall-adjacent furniture scenes all segment into exactly the expected room counts; real doorways (0.5 m) are not wrongly merged, wide openings (1.3 m) merge correctly. Remaining edge cases: a small room with a wide door (ratio 0.6–0.8) may be wrongly merged/split — corrected by manual editing in the GUI; narrow zones with distance values below `min_peak_height_m` produce no seeds and remain unclassified; a 0.5 m furniture gap is geometrically indistinguishable from a 0.5 m doorway (a semantic problem) and relies on user review of candidates.
 
-### 分割对比试验：骨架+门口切割方案（doorway_demo）
+### Segmentation comparison experiment: skeleton + doorway-cut approach (doorway_demo)
 
-`doorway_demo.py`（实验性，不进核心管线）按「骨架→门口候选→评分→切割→连通域」实现用户提出的方案。结论：
+`doorway_demo.py` (experimental, not part of the core pipeline) implements the user-proposed approach "skeleton → doorway candidates → scoring → cutting → connected components". Findings:
 
-- 门口检测可靠：所有真门（0.5 m）都能检出；走廊户型精确 5 区域、living_room 1 区域、双房间 2 区域。
-- 门口评分是难点：1-cell 薄墙在门洞交叉处碎成小连通体，「墙体支持度」按连通体尺寸无法与家具块区分（尺寸区间重叠）；家具缝隙割线会斜切房间（grid6 演示中把一间房斜劈）。这是与 watershed 方案相同的「家具缝隙 vs 门洞」语义歧义的另一面。
-- 形态学 closing 预处理对薄墙有害（腐蚀碎裂墙网），仅适合真实噪声地图。
-- 门口/拓扑作为一等公民是该方案的真实价值（阶段二 Segment 排序与导航需要）；后续可考虑混合：watershed 出区域 + 合并树山口作为门口记录。
+- Doorway detection is reliable: all real doors (0.5 m) are detected; corridor apartment yields exactly 5 regions, living_room 1 region, two rooms 2 regions.
+- Doorway scoring is the hard part: 1-cell thin walls fragment into small connected bodies at doorway crossings, and "wall support" by component size cannot be distinguished from furniture blocks (size ranges overlap); furniture-gap cut lines slice rooms diagonally (the grid6 demo splits one room diagonally). This is the other face of the same "furniture gap vs doorway" semantic ambiguity as the watershed approach.
+- Morphological closing preprocessing harms thin walls (erosion shatters the wall network); it suits only real noisy maps.
+- Doorways/topology as first-class citizens are the real value of this approach (needed for phase 2 Segment ordering and navigation); a hybrid is worth considering later: watershed regions + merge-tree saddles as doorway records.
 
-**混合路线已实现**（segmentation.py）：区域生成保持 maximin 淹没 + 合并树；`SegmentationResult.doorways` 输出门口记录（`Doorway`：相邻区域对、山口 center、clearance、width ≈ 2×clearance、ratio、likely_door），`adjacent_labels()` 给出拓扑邻接。实现要点：相邻对用**测地膨胀接触带**（普通膨胀会穿墙、会多跨脊线）判定；墙角对角相邻按 clearance 下限滤除；同一对区域多扇门只记录山口最高的一扇。渲染叠加品红门口标记，CLI 打印拓扑边。测试 `test_topology.py`（89 个 pytest 总计，core 78 + ui 11）。
+**The hybrid approach is implemented** (segmentation.py): region generation remains maximin flooding + merge tree; `SegmentationResult.doorways` outputs doorway records (`Doorway`: adjacent region pair, saddle center, clearance, width ≈ 2×clearance, ratio, likely_door), and `adjacent_labels()` gives topological adjacency. Implementation notes: adjacency is determined by a **geodesic dilation contact band** (plain dilation crosses walls and jumps across ridges); corner-diagonal adjacency is filtered by a clearance floor; when a region pair has multiple doors, only the one with the highest saddle is recorded. Rendering overlays magenta doorway markers; the CLI prints topology edges. Tests in `test_topology.py` (89 pytest total, core 78 + ui 11).
 
-已知风险（2026-08-22，已补特征测试）：`_clip_doorway_spills` 仍以合并树山口 cell 作切割中心；`test_transitive_connection_uses_local_contact_saddle` 证实 3×2 网格的 `direct=False` 传递连接中，该山口可与当前 Region 对的测地接触带山口不同。曾尝试对传递连接改用接触带，但会令带家具网格和走廊户型的房间内部发生跨门混标，已回退。需构造能复现实际切割错误的 fixture 后，再评估以门洞方向/双侧峰连通性约束的局部定位方案。
+Known risk (2026-08-22, characterization test added): `_clip_doorway_spills` still uses the merge-tree saddle cell as the cut center; `test_transitive_connection_uses_local_contact_saddle` confirms that for `direct=False` transitive connections in a 3×2 grid, this saddle can differ from the geodesic contact-band saddle of the current region pair. Switching transitive connections to the contact band was tried but caused cross-door mislabeling inside rooms of the furniture grid and corridor apartment, so it was reverted. After constructing a fixture that reproduces an actual clipping error, re-evaluate a local positioning scheme constrained by doorway direction / both-sides peak connectivity.
 
-演示图：`docs/demo/`（主方案分割+门口标记）与 `docs/demo/doorway/`（门口切割方案三联图）。
+Demo images: `docs/demo/` (main approach segmentation + doorway markers) and `docs/demo/doorway/` (doorway-cut approach triplets).
 
-### Region 表示与编辑语义
+### Region representation and editing semantics
 
-Region 内部表示为 bitmask，天然支持孔洞与离散组件；轮廓由 `cv2.findContours` 派生。编辑为画笔式：brush 增/减 cell、画圈/画线拆分；合并为显式菜单操作，不依赖先画出重叠。
+A Region is internally represented as a bitmask, naturally supporting holes and disjoint components; outlines are derived via `cv2.findContours`. Editing is brush-style: brush adds/removes cells, circle/line drawing splits; merge is an explicit menu operation and does not rely on painting an overlap first.
 
-**编辑时即时裁剪**：用户画的是意图，系统存的是 `意图 ∩ Cleanable Space`（已知自由且不在任何 Keepout 内）。落笔即裁剪并显示真实结果（所见即所得）；裁空则该编辑动作无效并提示。压到已有 Region 的笔画**后画者抢占**：重叠 cell 从旧 Region 扣除归新 Region，GUI 必须显著提示旧 Region 被改小。只存裁剪后掩码，不存原始笔画。用户 Region 中间有去不了的家具（被裁剪或 footprint 不可达）是**正常行为**，不是错误。
+**Immediate clipping during editing**: the user paints intent; the system stores `intent ∩ Cleanable Space` (known-free and inside no Keepout). Clipping happens on stroke and the true result is displayed (WYSIWYG); if the clip is empty, the edit is rejected with a prompt. A stroke overlapping an existing Region triggers **later-painter preemption**: overlapping cells are deducted from the old Region and given to the new one; the GUI must prominently indicate that the old Region shrank. Only the clipped mask is stored, never the raw stroke. Unreachable furniture inside a user's Region (clipped away or footprint-unreachable) is **normal behavior**, not an error.
 
-### 校验分级（发布时）
+### Validation grading (at publish time)
 
-阶段一 robot footprint 来自参数 `robot_inscribed_radius`（默认 0.17 m）；阶段二才从 Nav2 解析 footprint profile。
+In phase 1 the robot footprint comes from the parameter `robot_inscribed_radius` (default 0.17 m); phase 2 will parse the footprint profile from Nav2.
 
-Error（阻止发布）：Region 间重叠；Region 含障碍/未知 cell；Region 掩码经 footprint 半径腐蚀后为空（机器人中心无法停留其中）；Region 与 Keepout 相交。这些 error 在正常编辑路径下被即时裁剪与抢占规则保证不会发生——发布校验中它们是**系统不变量检查**（防手改文件与 bug），正常用户永远触发不到。
+Errors (block publishing): Regions overlap; a Region contains occupied/unknown cells; a Region mask is empty after erosion by the footprint radius (the robot center cannot stay inside); a Region intersects a Keepout. Under normal editing paths these errors are guaranteed impossible by immediate clipping and preemption rules — in publish validation they are **system invariant checks** (against hand-edited files and bugs) that normal users can never trigger.
 
-Warning（允许发布，GUI 必须显著呈现）：存在未划分的可清扫自由空间；Region 的 footprint 可达核心被窄喉断成多片（机器人无法在 Region 内通行）。**不用「不可达 cell 比例」指标**（实现时发现：任何房间的周界一圈都是机器人中心不可达的，约 30%，必然误报）；腐蚀作用于 Region 掩码自身而非整个可清扫空间。
+Warnings (allow publishing, GUI must present prominently): unassigned cleanable free space exists; a Region's footprint-reachable core is split into multiple components by narrow throats (the robot cannot traverse the Region). **The "unreachable cell ratio" metric is not used** (found during implementation: the perimeter ring of any room is unreachable to the robot center, ~30%, guaranteeing false positives); erosion applies to the Region mask itself, not the whole cleanable space.
 
-### 持久化
+### Persistence
 
-根目录 `~/.local/share/oomwoo_cleaning_jobs/maps/<map_hash>/`，含：
+Root directory `~/.local/share/oomwoo_cleaning_jobs/maps/<map_hash>/`, containing:
 
-- `map_snapshot.{yaml,pgm}`：地图快照（溯源用）。
-- `draft/`：`regions.yaml`（Region 元数据）+ `masks/*.png`（1-bit 掩码，可用看图工具检查）+ `constraints.yaml`（Keepout/Virtual Wall 几何）。
-- `published/`：同构。一张地图任一时刻至多一个 Published Region Set；发布 = 校验通过后复制 draft 并记录版本号与时间戳。
+- `map_snapshot.{yaml,pgm}`: map snapshot (for provenance).
+- `draft/`: `regions.yaml` (Region metadata) + `masks/*.png` (1-bit masks, inspectable with an image viewer) + `constraints.yaml` (Keepout/Virtual Wall geometry).
+- `published/`: same structure. At most one Published Region Set per map at any time; publishing = copy draft after validation passes, recording version number and timestamp.
 
-已实现：`persistence.RegionSetStore` 以完整 Source Map identity 为目录键，首次保存时写 `map_snapshot.{yaml,pgm}` 预览及无损 `map_snapshot.cells.npy` 原始 cell 侧车；draft 与 published 指向不可变 generation 目录，并通过原子 symlink 指针切换。`publish()` 先按当前 Keepout 校验，再保存 draft、切换 published，并递增版本/记录 UTC 时间及 footprint 半径。加载会校验 schema、identity、PNG 掩码形状与掩码重叠；Published 会按保存的 footprint 半径重校验，draft 可保留发布校验错误以供 GUI 显示。
+Implemented: `persistence.RegionSetStore` keys directories by the full Source Map identity, writes a `map_snapshot.{yaml,pgm}` preview plus a lossless `map_snapshot.cells.npy` raw-cell sidecar on first save; draft and published point to immutable generation directories switched via atomic symlink pointers. `publish()` validates against the current Keepouts first, then saves the draft, switches published, and increments the version / records UTC time and footprint radius. Loading validates schema, identity, PNG mask shapes, and mask overlap; Published sets are re-validated against the saved footprint radius, while drafts may retain publish-validation errors for GUI display.
 
 ### Keepout / Virtual Wall
 
-纳入阶段一。Keepout 从 Cleanable Space 扣除；Virtual Wall 是线状 Keepout，以线膨胀为多边形处理。约束与 Region 共享持久化与校验管线。
+Included in phase 1. Keepouts are deducted from the Cleanable Space; a Virtual Wall is a line-shaped Keepout, handled by dilating the line into a polygon. Constraints share the persistence and validation pipeline with Regions.
 
-已实现核心模型：`constraints.ConstraintSet` 集合 `Keepout`（map-frame 多边形）与 `VirtualWall`（显式 `width_m` 的中心线），并按 Source Map 的 origin/yaw 栅格化。调用者将 `source.free_mask() & ~constraints.mask_for(source)` 传入 `segment(..., cleanable_mask=...)`；若由该候选初始化 Region Set，必须把原始 `source.free_mask()` 与当前约束 mask 分别传给 `RegionSet.from_segmentation(..., base_cleanable=..., keepout_mask=...)`。约束变化后用 `RegionSet.apply_keepout_mask()` 立即裁掉已有 Region cell。移除约束只恢复可清扫空间，不复活被裁掉的 Region cell。
+Core model implemented: `constraints.ConstraintSet` holds `Keepout` (map-frame polygons) and `VirtualWall` (center lines with explicit `width_m`), rasterized according to the Source Map's origin/yaw. Callers pass `source.free_mask() & ~constraints.mask_for(source)` into `segment(..., cleanable_mask=...)`; if a Region Set is initialized from those candidates, the raw `source.free_mask()` and the current constraint mask must be passed separately to `RegionSet.from_segmentation(..., base_cleanable=..., keepout_mask=...)`. After constraints change, use `RegionSet.apply_keepout_mask()` to immediately clip existing Region cells. Removing a constraint only restores cleanable space; it does not revive clipped Region cells.
 
-### 测试策略
+### Test strategy
 
-pytest 无头：合成地图（走廊 + 多房间，可精确断言分割数量、无重叠、校验判错）为主；仓库内提交 1–2 张真实保存地图做冒烟回归（分割不崩、候选数在合理区间）。GUI 不进 CI，保留手动验收清单。
+Headless pytest: primarily synthetic maps (corridor + multi-room, allowing exact assertions on segment counts, no overlap, validation errors); 1–2 real saved maps committed to the repository as smoke regression (segmentation does not crash, candidate counts within a reasonable range). The GUI is not in CI; a manual acceptance checklist is kept.
 
-### 实现状态
+### Implementation status
 
-已实现：`src/oomwoo_cleaning_jobs_core`（ament_python）含 `source_map.SourceMap`（identity/掩码）、`map_io`、`segmentation`（maximin 淹没 + 合并树鞍部合并 + 门口溢出裁剪 + 门口拓扑记录，支持外部 cleanable mask）、`regions.RegionSet`（掩码编辑：paint/erase/create/delete/rename/merge/split、即时裁剪、后画者抢占、轮廓派生、Keepout 应用）、`constraints`（map-frame 多边形 Keepout、显式宽度 Virtual Wall、origin yaw 栅格化）、`validation`（error/warning 分级校验）、`render`/`render_map` CLI（`oomwoo-render-map`，`--segment` 出叠加图）；`test/` 下合成地图夹具（`fixtures`：双房间/含未知块/开间/极小房间/开放式双区/N 房间网格/走廊户型）与 78 个核心 pytest 及 `oomwoo_cleaning_jobs_ui/test` 下的 11 个 GUI/适配器测试（含坐标映射、命名健壮性、编辑门控、拆分反馈的回归验证）。`oomwoo_cleaning_jobs_ui` 已作为独立 PyQt5 + rclpy 包实现文件载入、候选审核、Region 编辑、Keepout/Virtual Wall 坐标输入、草稿/发布；`RosMapSource` 通过 executor 线程提供 transient-local `/map` 适配，GUI 线程会在 identity 变化时要求确认替换编辑会话，identity 未变则保留当前编辑；当前地图没有区域集时会明确显示其他地图的区域集数量。GUI 手动验收清单在 `src/oomwoo_cleaning_jobs_ui/docs/MANUAL_ACCEPTANCE.md`。演示输出在 `docs/demo/`（真实 living_room 与合成双房间的分割效果图）。
+Implemented: `src/oomwoo_cleaning_jobs_core` (ament_python) contains `source_map.SourceMap` (identity/masks), `map_io`, `segmentation` (maximin flooding + merge-tree saddle merge + doorway spill clipping + doorway topology records, with support for an external cleanable mask), `regions.RegionSet` (mask editing: paint/erase/create/delete/rename/merge/split, immediate clipping, later-painter preemption, outline derivation, Keepout application), `constraints` (map-frame polygon Keepout, explicit-width Virtual Wall, origin-yaw rasterization), `validation` (error/warning graded validation), `render`/`render_map` CLI (`oomwoo-render-map`, `--segment` produces overlays); synthetic map fixtures under `test/` (`fixtures`: two rooms / with unknown block / open plan / tiny room / open-plan two-zone / N-room grid / corridor apartment) with 78 core pytest and 11 GUI/adapter tests under `oomwoo_cleaning_jobs_ui/test` (including regression coverage of coordinate mapping, naming robustness, editing gating, and split feedback). `oomwoo_cleaning_jobs_ui` is implemented as a standalone PyQt5 + rclpy package with file loading, candidate review, Region editing, Keepout/Virtual Wall coordinate input, and draft/publish; `RosMapSource` provides transient-local `/map` adaptation via an executor thread, the GUI thread asks for confirmation before replacing the editing session on identity change and keeps current edits when identity is unchanged; when the current map has no region set, the count of region sets belonging to other maps is shown explicitly. The GUI manual acceptance checklist is at `src/oomwoo_cleaning_jobs_ui/docs/MANUAL_ACCEPTANCE.md`. Demo outputs are in `docs/demo/` (segmentation renderings of the real living_room and synthetic two-room maps).
 
 
-## 覆盖执行事实与集成方向
+## Coverage execution facts and integration direction
 
-现有 `oomwoo_coverage`：读取完整 `/map`、可选 `keepout_filter_mask`，从机器人所在位置选取可达连通域，执行牛耕式单元分解、扫掠和 gap-fill，并通过 Nav2 运动。它没有公开的 Region、Segment 或 target-mask 输入；目前会覆盖整个可达区域，不会只清扫指定 Region。
+Existing `oomwoo_coverage`: reads the full `/map` and an optional `keepout_filter_mask`, selects the reachable connected component from the robot's position, performs boustrophedon cell decomposition, sweeping, and gap-fill, and moves via Nav2. It has no public Region, Segment, or target-mask input; it currently covers the entire reachable area and cannot clean only a specified Region.
 
-它订阅外部 `coverage_ratio` 和 `covered_grid`，不自行估计覆盖率。仿真可由 coverage meter 提供这两者；真实机器人需要基于定位与清洁幅宽的 estimator。这一 estimator 是 Job progress、完成判断和精确恢复的独立依赖。
+It subscribes to external `coverage_ratio` and `covered_grid` and does not estimate coverage itself. In simulation both can come from a coverage meter; a real robot needs an estimator based on localization and cleaning width. This estimator is an independent dependency of Job progress, completion judgment, and precise recovery.
 
-第二阶段优先验证最小垂直切片：
+Phase 2 prioritizes validating a minimal vertical slice:
 
-`Published Region → target/allowed-clean mask 适配 → oomwoo_coverage → coverage estimator/grid → Job checkpoint`
+`Published Region → target/allowed-clean mask adaptation → oomwoo_coverage → coverage estimator/grid → Job checkpoint`
 
-不要在该切片被验证前冻结泛化 coverage-backend contract。对指定 Region，优先增加明确的 target/allowed-clean mask；不要通过伪造临时 map 混淆地图语义，除非维护者确认这是既有约定。
+Do not freeze a generalized coverage-backend contract before this slice is validated. For specified Regions, prefer adding an explicit target/allowed-clean mask; do not fake a temporary map and confuse map semantics unless maintainers confirm this is an established convention.
 
-## 后续 Job 行为
+## Subsequent Job behavior
 
-cleaning-jobs 将负责 RegionSet 任务化、Segment 切分/排序、状态持久化、用户控制、暂停/恢复、重试和汇总。一版仅允许一个 active Job。
+cleaning-jobs will own RegionSet tasking, Segment splitting/ordering, state persistence, user control, pause/resume, retry, and summary. Only one active Job is allowed at a time.
 
-Job 启动时固定 map identity、Published Region Set、清洁策略及从 Nav2 解析的 footprint profile；后续编辑仅影响新 Job。暂停是非终止状态，可由用户或安全/硬件条件触发。安全层独立停车；本包只观察和记录，不能承担 `/cmd_vel` 的硬安全职责。resume 是请求，安全层或执行器可拒绝并返回稳定 reason code。
+At Job start, map identity, Published Region Set, cleaning strategy, and the footprint profile parsed from Nav2 are pinned; later edits only affect new Jobs. Pause is a non-terminal state, triggerable by the user or by safety/hardware conditions. The safety layer stops the robot independently; this package only observes and records and cannot take hard safety responsibility for `/cmd_vel`. Resume is a request; the safety layer or executor may reject it and return a stable reason code.
 
-Job checkpoint 由 cleaning-jobs 保存。精确恢复依赖可信 coverage artifact：有 artifact 时继续未覆盖部分；没有时应重做当前 Segment 或要求用户确认，具体策略待定。
+Job checkpoints are saved by cleaning-jobs. Precise recovery relies on a trusted coverage artifact: with an artifact, continue the uncovered remainder; without one, redo the current Segment or ask the user to confirm — the exact policy is TBD.
 
-长期目标包括：电量、尘盒和拖布状态触发 dock-cycle 的补能/清空/清洗，再恢复覆盖；whole-map、per-room、spot；以及 perimeter + interior 组合。它们均在第一阶段之后。
+Long-term goals include battery, dustbin, and mop states triggering dock-cycle recharge/empty/wash before resuming coverage; whole-map, per-room, spot; and perimeter + interior combinations. All are after phase 1.
 
-## 未决边界
+## Open boundaries
 
-1. `oomwoo_coverage` 的指定目标输入：target/allowed-clean mask 的格式、所有者与版本校验。
-2. Segment 完成条件：路径完成、目标 coverage、无可恢复 gap，或其组合。
-3. 实机 coverage estimator：输入、误差/可信度、grid 格式、QoS、重启后重建。
-4. checkpoint 原子性、存储介质及 backend/robot 重启后的恢复规则。
-5. Region 到 Segment 的切分规则：面积、时间、电量、补给与策略边界。
-6. floor-care perimeter pass 与 interior sweep 的顺序、重叠容忍和共享 coverage artifact。
-7. Keepout/Virtual Wall 同时投影到 Nav2 costmap 与 coverage masks 的方式。
-8. `RunCleaningJob`、pause/resume/cancel/status 的 ROS 字段、幂等性、QoS、失败语义，以及 battery/bin/mop/dock/localization 输入接口。
-9. 区域集在地图变更（hash 变化）后的迁移/重绑定：是否支持、如何重投影与重新校验。阶段一不做，旧区域集仅保留并由 GUI 提示。
+1. `oomwoo_coverage` target input: format, ownership, and version validation of the target/allowed-clean mask.
+2. Segment completion condition: path completion, target coverage, no recoverable gaps, or a combination.
+3. Real-robot coverage estimator: inputs, error/confidence, grid format, QoS, rebuild after restart.
+4. Checkpoint atomicity, storage medium, and recovery rules across backend/robot restarts.
+5. Region-to-Segment splitting rules: area, time, battery, resupply, and strategy boundaries.
+6. Ordering, overlap tolerance, and shared coverage artifact of the floor-care perimeter pass and the interior sweep.
+7. How Keepout/Virtual Wall are simultaneously projected onto the Nav2 costmap and coverage masks.
+8. ROS fields, idempotency, QoS, and failure semantics of `RunCleaningJob`, pause/resume/cancel/status, plus battery/bin/mop/dock/localization input interfaces.
+9. Migration/rebinding of region sets after map changes (hash change): whether to support it, how to reproject and revalidate. Not done in phase 1; old region sets are only retained and surfaced by the GUI.
 
-## 仓库结构与质量目标
+## Repository structure and quality goals
 
-所有代码、测试、接口和开发工具位于本仓库；可在 `src/` 拆分内部 ROS 2/Python 包。核心为 Python 领域/应用逻辑，ROS 2 为适配层。共享 ROS action/message 放在同仓库的 `oomwoo_cleaning_interfaces`，使 GUI 与执行器不依赖 orchestrator 内部代码。
+All code, tests, interfaces, and development tools live in this repository; internal ROS 2/Python packages may be split under `src/`. The core is Python domain/application logic; ROS 2 is the adaptation layer. Shared ROS actions/messages go into `oomwoo_cleaning_interfaces` in the same repository, so the GUI and executors do not depend on orchestrator internals.
 
-后续测试应可在无头 CI 中覆盖：自动/手动 Region 编辑与校验；whole-map、per-room、spot 仅清扫预期区域；keepout 永不进入；以及强制中断后 coverage artifact 驱动的恢复。先实现第一阶段可重复的地图夹具与验证，再接入仿真执行。
+Future tests should cover in headless CI: automatic/manual Region editing and validation; whole-map, per-room, and spot cleaning only the intended areas; keepouts never entered; and coverage-artifact-driven recovery after forced interruption. Implement phase 1's repeatable map fixtures and verification first, then integrate simulation execution.

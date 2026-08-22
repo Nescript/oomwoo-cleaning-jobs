@@ -19,11 +19,12 @@ class EditorController:
         loaded = self.store.load_draft(source)
         if loaded:
             self.regions, self.constraints = loaded.region_set, loaded.constraints
-            return '已加载此地图的草稿'
+            return 'Loaded draft for this map'
         self.regions = None
         self.constraints = ConstraintSet()
         others = self.store.other_map_set_count(source)
-        return f'当前地图没有区域集；磁盘上存在 {others} 份属于其他地图的区域集；请生成候选区域'
+        return (f'No region set for the current map; {others} region set(s) on disk '
+                f'belong to other maps; please generate candidate regions')
 
     def generate_candidates(self):
         self._require_source()
@@ -39,14 +40,15 @@ class EditorController:
         if 0 <= row < self.source.height and 0 <= col < self.source.width:
             stroke[row, col] = True
         if erase:
-            return self.regions.erase(label, stroke), '已擦除'
+            return self.regions.erase(label, stroke), 'Erased'
         before = self.regions.labels.copy()
         changed = self.regions.paint(label, stroke)
         preempted = bool(changed and np.any((before != 0) & stroke & (before != label)))
-        return changed, '已抢占其他 Region 的 cell' if preempted else ('已绘制' if changed else '笔画完全落在不可清扫空间')
+        return changed, ('Preempted cells from another Region' if preempted
+                         else ('Painted' if changed else 'Stroke lies entirely in non-cleanable space'))
 
     def create_rectangle(self, start_row, start_col, end_row, end_col, name):
-        """以两个对角 cell 创建具名 Region；核心负责裁剪和抢占。"""
+        """Create a named Region from two diagonal cells; the core clips and preempts."""
         self._require_source()
         if self.regions is None:
             self.generate_candidates()
@@ -55,8 +57,8 @@ class EditorController:
         stroke = np.zeros(self.source.cells.shape, dtype=bool)
         stroke[row0:row1 + 1, col0:col1 + 1] = True
         label = self.regions.create(stroke, name)
-        return label, ('已创建 Region' if label is not None
-                       else '矩形完全落在不可清扫空间')
+        return label, ('Region created' if label is not None
+                       else 'Rectangle lies entirely in non-cleanable space')
 
     def add_keepout(self, identifier, vertices):
         """Add a map-frame polygon and immediately clip existing Region cells."""
@@ -79,7 +81,7 @@ class EditorController:
         keepouts = tuple(item for item in self.constraints.keepouts if item.identifier != identifier)
         walls = tuple(item for item in self.constraints.virtual_walls if item.identifier != identifier)
         if len(keepouts) == len(self.constraints.keepouts) and len(walls) == len(self.constraints.virtual_walls):
-            raise ValueError(f'约束 {identifier!r} 不存在')
+            raise ValueError(f'Constraint {identifier!r} does not exist')
         self._set_constraints(ConstraintSet(keepouts, walls))
 
     def _set_constraints(self, constraints):
@@ -94,7 +96,7 @@ class EditorController:
     def publish(self):
         self._require_regions(); return self.store.publish(self.source, self.regions, self.constraints)
     def _require_source(self):
-        if self.source is None: raise ValueError('请先打开地图')
+        if self.source is None: raise ValueError('Open a map first')
     def _require_regions(self):
         self._require_source()
-        if self.regions is None: raise ValueError('请先生成候选区域')
+        if self.regions is None: raise ValueError('Generate candidate regions first')

@@ -1,35 +1,48 @@
-"""自动候选区域分割：距离变换 + 自由空间内的 maximin 淹没分水岭 + 鞍部合并。
+"""Automatic candidate-region segmentation: distance transform + maximin
+flooding watershed confined to free space + saddle merge.
 
-对应 docs/DEVELOPMENT.md「第一阶段实施决定 · 自动分割」。流程：
+See docs/DEVELOPMENT.md "Phase 1 implementation decisions - Automatic
+segmentation". Pipeline:
 
-1. free mask（``0 <= v < free_thresh*100``，unknown 视为不可清扫）按连通域处理。
-2. 距离变换 + 局部极大值 markers；连通域只有一个峰（大开间）时整体作为
-   单一低置信候选。
-3. **maximin 淹没**（`_maximin_watershed`）：每个 free cell 归属于
-   "到该 cell 的最宽通路"所在的种子。只在自由空间内传播——墙不可穿越，
-   因此区域不会溢出到墙另一侧（曾用 `cv2.watershed` 在全图淹没导致越墙）。
-4. 小区域合并（`_merge_small_regions`）：小于 ``min_region_area`` 的区域
-   并入**连接最宽**（合并树山口最高）的近邻；山口并列时退化为共享边界
-   最长者；无近邻则标为未分类。
-5. **鞍部合并**（`_merge_by_saddle`）：相邻区域的鞍部（`_connection_values`
-   超水平集合并树给出的真实山口高度 = 两区域间最宽通道的半宽，与分界线
-   落点无关）不低于 ``saddle_merge_ratio`` × 较小峰高时合并——两区域间
-   存在足够宽的通道即同一片开阔空间；真门洞的鞍部显著低于两侧峰高，
-   不会被误并。传递闭包用并查集。
-6. **门口溢出裁剪**（`_clip_doorway_spills`）：maximin 会把门两侧 dist 低于
-   门鞍的 cell 分给对门区域形成溢出带；对每对相邻区域在合并树山口 cell
-   处生成切割线，暂时阻断后把落在对方连通体的 cell 重归对方，
-   区域边界强制对齐门洞切割线。
-7. 脊线标记（`_mark_ridges`）：与不同 label 相邻的 cell 标为未分类
-   （watershed 不直接产脊线，接触带两侧各一层 cell 构成未分类边界）。
-8. **门口记录**（`_find_doorways`）：对每对相邻区域（测地膨胀接触带判定）
-   记录 `Doorway`（山口 center、clearance、width ≈ 2×clearance、ratio、
-   likely_door），构成区域拓扑邻接。
+1. free mask (``0 <= v < free_thresh*100``; unknown counts as not cleanable),
+   processed per connected component.
+2. Distance transform + local-maxima markers; a component with a single peak
+   (open-plan room) becomes one low-confidence candidate as a whole.
+3. **Maximin flooding** (`_maximin_watershed`): each free cell is assigned to
+   the seed reachable via the widest path to that cell. Flooding propagates
+   only within free space — walls are not crossable, so regions never spill
+   to the other side of a wall (`cv2.watershed` on the full image crossed
+   walls; abandoned).
+4. Small-region merge (`_merge_small_regions`): regions smaller than
+   ``min_region_area`` merge into the neighbor with the **widest connection**
+   (highest merge-tree saddle); ties fall back to the longest shared border;
+   a region without neighbors becomes unclassified.
+5. **Saddle merge** (`_merge_by_saddle`): two adjacent regions merge when
+   their saddle (the true saddle height from the `_connection_values`
+   superlevel-set merge tree = half-width of the widest passage between the
+   regions, independent of where the boundary lands) is at least
+   ``saddle_merge_ratio`` x the lower peak height — a wide enough passage
+   means one open space; a real doorway's saddle is well below both peak
+   heights and is never merged. Transitive closure via union-find.
+6. **Doorway spill clipping** (`_clip_doorway_spills`): maximin assigns cells
+   near a doorway whose dist is below the door saddle to the opposite region
+   (a spill band). For each adjacent pair a cut line is generated at the
+   merge-tree saddle cell, temporarily blocked, and cells landing in the
+   other component are reassigned; region boundaries are forced onto the
+   doorway cut line.
+7. Ridge marking (`_mark_ridges`): cells adjacent to a different label are
+   marked unclassified (flooding produces no ridges; one cell layer on each
+   side of the contact band forms the unclassified boundary).
+8. **Doorway records** (`_find_doorways`): for each adjacent region pair
+   (decided by geodesic-dilation contact bands) record a `Doorway`
+   (saddle center, clearance, width ~= 2x clearance, ratio, likely_door),
+   forming the region topology adjacency.
 
-未分类 cell（label 0）由 ``unclassified_free_mask`` 显式标出；距离值低于
-``min_peak_height_m`` 的局部高地（过窄地带）不会产生种子，也留在未分类。
+Unclassified cells (label 0) are exposed via ``unclassified_free_mask``;
+local high ground below ``min_peak_height_m`` (too-narrow strips) produces
+no seed and stays unclassified.
 
-该算法是「先用它看效果」的初始策略，可替换。
+This algorithm is the initial "use it and see" strategy and is replaceable.
 """
 
 from __future__ import annotations
@@ -43,12 +56,13 @@ from scipy import ndimage
 
 from .source_map import DEFAULT_FREE_THRESH, SourceMap
 
-#: labels 数组中"非候选/未分类"的取值
+#: labels value for "not a candidate / unclassified"
 UNCLASSIFIED = 0
 
 _NEIGHBORS_8 = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
 
-#: 无环绕的相邻切片对：(a 的切片, b 的切片)，b 是 a 向右/下/右下/左下平移一格
+#: Wrap-free adjacent slice pairs: (slice of a, slice of b) where b is a
+#: shifted one cell right/down/down-right/down-left
 _CONTACT_SLICES = (
     (np.s_[:, :-1], np.s_[:, 1:]),
     (np.s_[:-1, :], np.s_[1:, :]),
@@ -61,24 +75,28 @@ _CONTACT_SLICES = (
 class SegmentationParams:
     free_thresh: float = DEFAULT_FREE_THRESH
     min_region_area_m2: float = 1.0
-    #: 局部极大值窗口直径（米），小于此尺度的距离起伏不产生独立房间。
-    #: 默认 0.7 m：更大窗口会穿门抑制小房间的峰（导致整个连通域退化为低置信）。
+    #: Diameter of the local-maximum window (m); distance ripples smaller
+    #: than this produce no separate room. Default 0.7 m: a larger window
+    #: suppresses small-room peaks through doorways (the whole component
+    #: then degenerates to low confidence).
     marker_neighborhood_m: float = 0.7
-    #: 峰的最小距离值（米），≈ robot_inscribed_radius；更窄处不成峰
+    #: Minimum distance value of a peak (m), ~= robot_inscribed_radius;
+    #: narrower passages form no peak
     min_peak_height_m: float = 0.17
-    #: 鞍部合并阈值：鞍部 >= ratio × 较小峰高时合并相邻区域。
-    #: 1.0 以上等价于禁用；真门洞比值通常 < 0.5，同片开阔地的伪分割 ≥ 1.0。
+    #: Saddle-merge threshold: merge adjacent regions when
+    #: saddle >= ratio x lower peak height. Values above 1.0 disable merging;
+    #: real doorways usually score < 0.5, false splits of one open space >= 1.0.
     saddle_merge_ratio: float = 0.8
-    #: 门口记录的 likely_door 判定门宽范围（米）
+    #: Door-width range (m) for the likely_door flag of doorway records
     min_door_width_m: float = 0.30
     max_door_width_m: float = 1.30
-    #: 门口切割线采样时自由走向的最大延伸（米）
+    #: Maximum free-run extension (m) when sampling a doorway cut line
     max_door_measure_m: float = 1.50
 
 
 @dataclass(frozen=True)
 class CandidateRegion:
-    """自动划分出的候选区域（Candidate Region）。"""
+    """Automatically derived Candidate Region."""
 
     label: int
     cell_count: int
@@ -88,16 +106,17 @@ class CandidateRegion:
 
 @dataclass(frozen=True)
 class Doorway:
-    """两个 Region 间的门口记录（拓扑边）。
+    """Doorway record between two Regions (topology edge).
 
-    center 是两区域接触带中 dist 最大的 cell（局部山口）；clearance_m 是
-    山口高度（瓶颈半宽）；width_m ≈ 2 × clearance（经典近似）；
-    ratio = clearance / min(两侧峰高)（越大越像同一片开阔空间）；
-    likely_door = width_m 落在门宽范围内。
+    center is the max-dist cell inside the contact band of the two regions
+    (local saddle); clearance_m is the saddle height (bottleneck half-width);
+    width_m ~= 2 x clearance (classic approximation);
+    ratio = clearance / min(peak heights of both sides) (larger means more
+    likely one open space); likely_door = width_m within the door-width range.
     """
 
     regions: tuple[int, int]
-    center: tuple[int, int]  # (row, col)，cells 行序
+    center: tuple[int, int]  # (row, col), cell row order
     width_m: float
     clearance_m: float
     ratio: float
@@ -106,9 +125,10 @@ class Doorway:
 
 @dataclass
 class SegmentationResult:
-    """分割结果。labels 与 SourceMap.cells 同行序（row 0 = 最底行）。"""
+    """Segmentation result. labels shares the row order of SourceMap.cells
+    (row 0 = bottom row)."""
 
-    labels: np.ndarray  # int32，UNCLASSIFIED(0) = 非候选/未分类
+    labels: np.ndarray  # int32, UNCLASSIFIED(0) = not a candidate / unclassified
     regions: list[CandidateRegion]
     free_mask: np.ndarray
     params: SegmentationParams
@@ -116,14 +136,14 @@ class SegmentationResult:
 
     @property
     def unclassified_free_mask(self) -> np.ndarray:
-        """属于可清扫空间但未划入任何候选区域的 cell。"""
+        """Cells that are cleanable but not assigned to any candidate region."""
         return self.free_mask & (self.labels == UNCLASSIFIED)
 
     def mask_of(self, label: int) -> np.ndarray:
         return self.labels == label
 
     def adjacent_labels(self, label: int) -> set[int]:
-        """拓扑邻接：通过门口与该 Region 相连的其他 Region。"""
+        """Topology adjacency: other Regions connected to this one via a doorway."""
         out: set[int] = set()
         for doorway in self.doorways:
             a, b = doorway.regions
@@ -139,10 +159,11 @@ def segment(
     params: SegmentationParams | None = None,
     cleanable_mask: np.ndarray | None = None,
 ) -> SegmentationResult:
-    """自动分割 Source Map 的允许清扫空间。
+    """Automatically segment the cleanable space of a Source Map.
 
-    ``cleanable_mask`` 供 Keepout 等外部约束收窄候选空间；它不能把
-    障碍/未知变成可清扫 cell，且必须与 Source Map 栅格同 shape。
+    ``cleanable_mask`` lets external constraints such as Keepout narrow the
+    candidate space; it cannot turn occupied/unknown cells cleanable and
+    must match the Source Map grid shape.
     """
     params = params or SegmentationParams()
     res = source_map.resolution
@@ -152,9 +173,9 @@ def segment(
     else:
         cleanable_mask = np.asarray(cleanable_mask, dtype=bool)
         if cleanable_mask.shape != source_free.shape:
-            raise ValueError('cleanable_mask 与 SourceMap 栅格形状不一致')
+            raise ValueError('cleanable_mask shape must match the SourceMap grid')
         free = source_free & cleanable_mask
-    structure = np.ones((3, 3), dtype=np.int32)  # 8-连通
+    structure = np.ones((3, 3), dtype=np.int32)  # 8-connectivity
 
     size_cells = max(3, int(round(params.marker_neighborhood_m / res)) | 1)
     min_cells = params.min_region_area_m2 / (res * res)
@@ -173,7 +194,7 @@ def segment(
         comp_markers, n_markers = ndimage.label(peaks, structure=structure)
 
         if n_markers <= 1:
-            # 退化：整个连通域作为单一低置信候选
+            # Degenerate: the whole component is one low-confidence candidate
             labels[comp] = next_label
             low_conf.add(next_label)
             next_label += 1
@@ -183,7 +204,8 @@ def segment(
             markers[comp_markers == k] = next_label
             next_label += 1
 
-    # maximin 淹没只填充尚未归属的自由 cell（退化连通域已整块标记）
+    # Maximin flooding only fills free cells not yet assigned (degenerate
+    # components are already labeled as a whole)
     floodable = free & (labels == UNCLASSIFIED)
     flooded, prio = _maximin_watershed(dist, markers, floodable)
     labels[flooded > UNCLASSIFIED] = flooded[flooded > UNCLASSIFIED]
@@ -208,13 +230,15 @@ def segment(
 
 
 def _maximin_watershed(dist: np.ndarray, markers: np.ndarray, free: np.ndarray) -> np.ndarray:
-    """自由空间内的 maximin（最宽路径）淹没分水岭。
+    """Maximin (widest-path) flooding watershed within free space.
 
-    每个 free cell 归属于"到该 cell 通路上最小距离值最大"的种子，
-    即距离变换面上的集水盆地。洪峰只在 free cell 间传播，墙不可穿越。
-    瓶颈值相同时（两盆地相遇 / 平台区）按到种子的测地距离决胜，
-    使分界线落在鞍部/门洞处而不是溢出到相邻区域内部；残余的任意
-    分界由 `_mark_ridges` 统一标为未分类。
+    Each free cell is assigned to the seed whose path to that cell has the
+    largest minimum distance value, i.e. a catchment basin on the distance-
+    transform surface. Flooding propagates only between free cells; walls
+    are not crossable. Ties in bottleneck value (two basins meeting / a
+    plateau) are broken by geodesic distance to the seed, so boundaries land
+    on saddles/doorways instead of spilling into a neighboring region; any
+    remaining arbitrary boundary is marked unclassified by `_mark_ridges`.
     """
     labels = markers.astype(np.int32).copy()
     prio = np.where(markers > UNCLASSIFIED, dist, -np.inf)
@@ -227,7 +251,7 @@ def _maximin_watershed(dist: np.ndarray, markers: np.ndarray, free: np.ndarray) 
         neg_p, g, r, c = heapq.heappop(heap)
         p = -neg_p
         if p < prio[r, c] - eps or (p < prio[r, c] + eps and g > geo[r, c] + eps):
-            continue  # 已被更优（更宽或同等但更短）的路径更新过
+            continue  # already updated by a better (wider, or equal but shorter) path
         lab = labels[r, c]
         for dr, dc in _NEIGHBORS_8:
             rr, cc = r + dr, c + dc
@@ -249,12 +273,15 @@ def _merge_small_regions(
     min_cells: float,
     low_conf: set[int],
 ) -> np.ndarray:
-    """小于 min_cells 的区域并入邻域；无邻域则标为未分类。
+    """Regions smaller than min_cells merge into a neighbor; a region without
+    neighbors becomes unclassified.
 
-    目标邻域的选择依据**最宽连接**（`_connection_values` 的山口高度）：
-    小区域应并入与它连接最宽的区域。若按共享边界长度选择，门洞旁的
-    小盆地会穿门漏进相邻房间；按山口选择则留在本房间的主盆地
-    （内部连接更宽）。山口并列时退化为边界最长者。
+    The target neighbor is chosen by **widest connection** (saddle height
+    from `_connection_values`): a small region should merge into the region
+    it connects to most widely. Choosing by shared-border length would leak
+    small basins next to a doorway through the door into the adjacent room;
+    choosing by saddle keeps them in this room's main basin (wider internal
+    connection). Ties fall back to the longest shared border.
     """
     changed = True
     while changed:
@@ -295,15 +322,19 @@ def _connection_values(
     dist: np.ndarray,
     free: np.ndarray,
 ) -> dict[tuple[int, int], tuple[float, tuple[int, int], bool]]:
-    """区域对 -> (山口高度 W, 山口 cell, direct)：两区域在 ``dist >= W`` 的
-    超水平集内连通的**最大** W，以及首次连通处的 cell（瓶颈点）。
+    """region pair -> (saddle height W, saddle cell, direct): the **maximum**
+    W for which the two regions are connected within the ``dist >= W``
+    superlevel set, plus the cell where they first connect (the bottleneck).
 
-    等价于分水岭合并树（merge tree / persistence）：按 dist 降序扫描
-    free cell 并查集合并，首次把两个不同 label 的集合连通时的 dist
-    即两区域间最宽通路的瓶颈。与最终分界线落在哪里无关。
+    Equivalent to the watershed merge tree (persistence): scanning free
+    cells in descending dist order with union-find, the dist at which two
+    different labels first become connected is the bottleneck of the widest
+    path between the regions, independent of where the final boundary lands.
 
-    direct=False 表示该连接途经第三方区域（合并集合已含其他 label），
-    是传递连接而非直接相邻——合并与门口记录只应使用 direct=True。"""
+    direct=False means the connection passes through a third region (the
+    merged set already contains other labels) — a transitive connection, not
+    direct adjacency; merging and doorway records must only use direct=True.
+    """
     h, w = dist.shape
     cells = np.argwhere(free)
     order = np.argsort(-dist[free], kind='stable')
@@ -330,7 +361,7 @@ def _connection_values(
                 continue
             y = rr * w + cc
             if y not in parent:
-                continue  # 尚未处理（dist 更低）
+                continue  # not processed yet (lower dist)
             ra, rb = find(x), find(y)
             if ra == rb:
                 continue
@@ -356,11 +387,13 @@ def _merge_by_saddle(
     ratio: float,
     low_conf: set[int],
 ) -> np.ndarray:
-    """山口高度不低于 ratio × 较小峰高的区域对合并（并查集传递闭包）。
+    """Merge region pairs whose saddle height is at least ratio x the lower
+    peak height (union-find transitive closure).
 
-    直觉：两区域间只要存在一条足够宽（相对两者规模）的通道，它们就是
-    同一片开阔空间被多个距离峰劈开的伪分割；真门洞的山口显著低于
-    两侧峰高，不会被误并。
+    Intuition: if a wide enough passage (relative to both sizes) exists
+    between two regions, they are one open space falsely split by multiple
+    distance peaks; a real doorway's saddle is well below both peak heights
+    and is never merged.
     """
     values = [int(v) for v in np.unique(labels) if v != UNCLASSIFIED]
     if len(values) < 2:
@@ -396,7 +429,7 @@ def _merge_by_saddle(
 
 
 def _geodesic_dilate(mask: np.ndarray, free: np.ndarray, steps: int = 2) -> np.ndarray:
-    """在自由空间内膨胀，避免普通膨胀跨过墙体。"""
+    """Dilate within free space so dilation cannot cross walls."""
     kernel3 = np.ones((3, 3), dtype=np.uint8)
     out = mask & free
     for _ in range(steps):
@@ -408,11 +441,12 @@ def _contact_saddle_cell(
     contact: np.ndarray,
     dist: np.ndarray,
 ) -> tuple[int, int]:
-    """返回两个 Region 测地接触带内 clearance 最大的 cell。"""
+    """Return the cell with maximum clearance in the geodesic contact band
+    of two Regions."""
     if contact.shape != dist.shape:
-        raise ValueError('contact 与 dist 形状不一致')
+        raise ValueError('contact and dist shapes differ')
     if not contact.any():
-        raise ValueError('接触带不能为空')
+        raise ValueError('contact band must not be empty')
     contact_dist = np.where(contact, dist, -np.inf)
     return tuple(int(v) for v in np.unravel_index(contact_dist.argmax(), dist.shape))
 
@@ -424,15 +458,19 @@ def _find_doorways(
     params: SegmentationParams,
     res: float,
 ) -> list[Doorway]:
-    """为最终 Region 拓扑生成门口记录。
+    """Generate doorway records for the final Region topology.
 
-    门口区域对 = 最终标记中空间相邻（接触带 <=2 cell 的脊线/未分类）的
-    区域对。山口 center 与 clearance 取两区域公共接触带中 dist 最大的
-    cell（局部山口）。门宽 ≈ 2 × clearance（瓶颈半宽经典近似）。
+    A doorway region pair is a pair that is spatially adjacent in the final
+    labels (contact band with <=2 cells of ridge/unclassified between them).
+    Saddle center and clearance are taken from the max-dist cell of the
+    shared contact band (local saddle). Door width ~= 2 x clearance (classic
+    bottleneck half-width approximation).
 
-    注意：不用合并树的 direct 标记判定相邻——同一层级先连通的区域会
-    把后连通的实际相邻对标记为传递连接（先开的门"吸收"了区域）。
-    同一对区域间若有多扇门，只记录山口最高的一扇。
+    Note: adjacency is NOT decided by the merge tree's direct flag — regions
+    connected earlier at the same level mark later actually-adjacent pairs
+    as transitive (the first-opened door "absorbs" a region). When two
+    regions share multiple doors, only the one with the highest saddle is
+    recorded.
     """
     values = [int(v) for v in np.unique(labels) if v != UNCLASSIFIED]
     dilated: dict[int, np.ndarray] = {
@@ -445,14 +483,16 @@ def _find_doorways(
             contact = dilated[a] & dilated[b]
             if not contact.any():
                 continue
-            # 局部山口 = 接触带中 dist 最大的 cell
+            # Local saddle = max-dist cell of the contact band
             center = _contact_saddle_cell(contact, dist)
             clearance = float(dist[center])
-            # 墙角对角相邻（十字墙交叉处）的接触带 clearance 极低，滤除
+            # Contact bands of corner-diagonal adjacency (cross-shaped wall
+            # junctions) have extremely low clearance; filter them out
             if clearance < params.min_door_width_m / 2:
                 continue
-            # 门宽 ≈ 2 × 山口 clearance（瓶颈中点到两侧障碍距离之和的
-            # 经典近似；实测方向采样对接触带 1-2 cell 的偏移过于敏感）
+            # Door width ~= 2 x saddle clearance (classic approximation of
+            # bottleneck midpoint to both obstacle sides; measured directional
+            # sampling proved too sensitive to 1-2 cell contact-band offsets)
             width_m = 2.0 * clearance
             doorways.append(Doorway(
                 regions=(a, b),
@@ -471,9 +511,9 @@ def _free_run(
     direction: tuple[float, float],
     max_cells: int,
 ) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
-    """从 center 沿 direction 正负两方向走，收集 free cell。
+    """Walk from center along direction in both signs, collecting free cells.
 
-    返回 (line, ends)：ends 为两側行进终止处的第一个非 free cell。"""
+    Returns (line, ends): ends are the first non-free cell at each side."""
     h, w = free.shape
     line: list[tuple[int, int]] = []
     ends: list[tuple[int, int]] = []
@@ -498,7 +538,8 @@ def _shortest_cut_line(
     center: tuple[int, int],
     max_cells: int,
 ) -> list[tuple[int, int]] | None:
-    """过 center 的方向采样最短自由走向（两端都须止于非 free cell）。"""
+    """Direction-sampled shortest free run through center (both ends must
+    terminate on non-free cells)."""
     directions = [(float(np.sin(t)), float(np.cos(t)))
                   for t in np.linspace(0, np.pi, 16, endpoint=False)]
     best: list[tuple[int, int]] | None = None
@@ -516,14 +557,18 @@ def _clip_doorway_spills(
     params: SegmentationParams,
     res: float,
 ) -> np.ndarray:
-    """把门口边界强制对齐到门洞切割线。
+    """Force region boundaries onto doorway cut lines.
 
-    maximin 淹没按"最宽通路"分配 cell：门两侧 dist 低于门鞍的 cell 会被
-    分配给对门区域（宽门时形成可见的溢出带）。这里对每个空间相邻的
-    区域对：在合并树山口 cell（首次连通 cell，位于门洞通道内）处方向
-    采样取两端止于非 free 的最短走向作为切割线，3x3 加厚后暂时阻断，
-    把落在对方连通体里的本区域 cell 重归对方；切割带 cell 最后按邻域
-    多数表决归边。切割未能把 A∪B 分成两个分含各自峰的连通体时保持原样。
+    Maximin flooding assigns cells by "widest path": cells near a doorway
+    whose dist is below the door saddle are assigned to the opposite region
+    (a visible spill band on wide doors). Here, for each spatially adjacent
+    region pair: direction-sample at the merge-tree saddle cell (the first
+    connection cell, inside the doorway passage) for the shortest run
+    terminating on non-free cells at both ends, thicken it 3x3, temporarily
+    block it, and reassign this region's cells that landed in the other
+    component; cut-band cells are finally assigned by neighborhood majority
+    vote. If the cut fails to split A|B into two components each containing
+    its own peak, labels are kept unchanged.
     """
     connections = _connection_values(labels, dist, free)
     values = [int(v) for v in np.unique(labels) if v != UNCLASSIFIED]
@@ -535,8 +580,10 @@ def _clip_doorway_spills(
             contact = dilated[a] & dilated[b]
             if not contact.any():
                 continue
-            # 合并树山口给出可穿过墙体的最窄切割方向；接触带只在
-            # _find_doorways 中用于拓扑记录。若没有连接记录则退化到接触带。
+            # The merge-tree saddle gives the narrowest cut direction that
+            # can pass through walls; the contact band is only used for
+            # topology records in _find_doorways. Fall back to the contact
+            # band when there is no connection record.
             connection = connections.get((a, b))
             cell = (connection[1] if connection is not None
                     else _contact_saddle_cell(contact, dist))
@@ -556,10 +603,11 @@ def _clip_doorway_spills(
                 np.where(out == b, dist, -np.inf).argmax(), dist.shape)
             comp_a, comp_b = comp[peak_a], comp[peak_b]
             if comp_a == 0 or comp_b == 0 or comp_a == comp_b:
-                continue  # 切割未能分离两区域，保持原样
+                continue  # cut did not separate the two regions; keep as-is
             out[(labels == a) & (comp == comp_b)] = b
             out[(labels == b) & (comp == comp_a)] = a
-            # 切割带 cell（被 cut 覆盖、不在任何连通体内）按邻域多数归边
+            # Cut-band cells (covered by cut, in no component) are assigned
+            # by neighborhood majority vote
             band = ((out == a) | (out == b)) & cut
             for _ in range(3):
                 if not band.any():
@@ -581,10 +629,12 @@ def _clip_doorway_spills(
 
 
 def _mark_ridges(labels: np.ndarray) -> np.ndarray:
-    """与不同 label 相邻（8-连通）的 cell 标为未分类脊线。
+    """Mark cells adjacent (8-connectivity) to a different label as
+    unclassified ridges.
 
-    maximin 淹没把每个 cell 严格分给某一侧，不产脊线；这里把接触带
-    两侧各一层 cell 标为未分类，作为显式的区域边界。
+    Maximin flooding assigns every cell strictly to one side and produces
+    no ridges; here one cell layer on each side of the contact band is
+    marked unclassified as an explicit region boundary.
     """
     ridge = np.zeros(labels.shape, dtype=bool)
     for sa, sb in _CONTACT_SLICES:

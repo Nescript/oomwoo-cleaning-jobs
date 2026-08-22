@@ -1,19 +1,27 @@
-"""Published 前的校验分级（对应 DEVELOPMENT.md「校验分级」）。
+"""Pre-publish validation severity grading (see DEVELOPMENT.md "Validation
+grading").
 
-**Error**（阻止发布）：Region 含障碍/未知 cell、Region 掩码经 footprint
-半径腐蚀后为空（机器人中心无法停留在 Region 内，永远进不去）、与
-Keepout 相交。正常编辑路径下即时裁剪与抢占规则保证这些不会发生——
-它们是**系统不变量检查**（防手改文件与 bug）。Region 重叠在内存模型
-（单一 labels 数组）下结构性不可能，重叠检查 `check_masks_overlap`
-供持久化加载（#5，逐 Region PNG 掩码）时使用。
+**Error** (blocks publishing): a Region contains occupied/unknown cells;
+a Region mask eroded by the footprint radius becomes empty (the robot
+center can never stay inside the Region, so it can never enter); a Region
+intersects a Keepout. In normal editing flows, immediate clipping and
+preemption guarantee these never happen — they are **system invariant
+checks** (against hand-edited files and bugs). Region overlap is
+structurally impossible in the in-memory model (single labels array);
+the overlap check `check_masks_overlap` is used at persistence load time
+(#5, per-Region PNG masks).
 
-**Warning**（允许发布，GUI 必须显著呈现）：存在未划分的可清扫自由空间；
-Region 的 footprint 可达核心被窄喉断成多片（机器人无法在 Region 内
-通行）。注意不用「不可达 cell 比例」指标：任何房间的周界一圈都是
-机器人中心不可达的（约 30%），该指标对正常房间必然误报。
-Region 中间有去不了的家具（被裁剪或不可达）是**正常行为**，不是错误。
+**Warning** (publishing allowed, GUI must display prominently): unassigned
+cleanable free space exists; a Region's footprint-reachable core is split
+into multiple pieces by a narrow throat (the robot cannot traverse the
+Region). Note the deliberate absence of an "unreachable cell ratio"
+metric: the perimeter ring of any room is unreachable to the robot center
+(~30%), so that metric would always be a false positive for normal rooms.
+Unreachable furniture inside a Region (clipped away or unreachable) is
+**normal behavior**, not an error.
 
-阶段一 footprint 来自参数 `robot_inscribed_radius`（默认 0.17 m）。
+In phase 1 the footprint comes from the `robot_inscribed_radius` parameter
+(default 0.17 m).
 """
 
 from __future__ import annotations
@@ -29,9 +37,10 @@ from .regions import RegionSet
 LEVEL_ERROR = 'error'
 LEVEL_WARNING = 'warning'
 
-#: 默认 footprint 内切圆半径（米），阶段二改从 Nav2 解析
+#: Default footprint inscribed-circle radius (m); phase 2 parses it from Nav2
 DEFAULT_ROBOT_RADIUS_M = 0.17
-#: 可达核心的最小连通片尺寸（cells），小于此的碎片不算「断开的一片」
+#: Minimum size (cells) of a reachable-core connected piece; smaller
+#: fragments do not count as a "disconnected piece"
 MIN_CORE_COMPONENT_CELLS = 4
 
 
@@ -40,7 +49,7 @@ class ValidationIssue:
     level: str  # LEVEL_ERROR / LEVEL_WARNING
     code: str
     message: str
-    region: int | None = None  # 相关 Region label；与具体 Region 无关为 None
+    region: int | None = None  # related Region label; None if not Region-specific
 
 
 @dataclass
@@ -57,7 +66,7 @@ class ValidationReport:
 
     @property
     def ok(self) -> bool:
-        """无 error 即可发布（warning 不阻止）。"""
+        """No errors means publishable (warnings do not block)."""
         return not self.errors
 
 
@@ -66,41 +75,44 @@ def validate_region_set(
     robot_inscribed_radius: float = DEFAULT_ROBOT_RADIUS_M,
     keepout_mask: np.ndarray | None = None,
 ) -> ValidationReport:
-    """发布前校验。keepout_mask 为 None 表示尚无 Keepout（#6 接入）。"""
+    """Pre-publish validation. keepout_mask=None means no Keepout yet
+    (wired in #6)."""
     report = ValidationReport()
     res = region_set.resolution
     cleanable = region_set.cleanable
     if keepout_mask is not None:
         keepout_mask = np.asarray(keepout_mask, dtype=bool)
         if keepout_mask.shape != region_set.labels.shape:
-            raise ValueError('keepout_mask 与 RegionSet 形状不一致')
+            raise ValueError('keepout_mask shape must match the RegionSet grid')
 
     regions = region_set.regions()
     if not regions:
         report.issues.append(ValidationIssue(
             level=LEVEL_ERROR, code='empty_region_set',
-            message='Region Set 为空，无可发布内容'))
+            message='Region Set is empty; nothing to publish'))
 
     for info in regions:
         mask = region_set.mask_of(info.label)
-        # Error: 含障碍/未知 cell（不变量）
+        # Error: contains occupied/unknown cells (invariant)
         dirty = int((mask & ~cleanable).sum())
         if dirty:
             report.issues.append(ValidationIssue(
                 level=LEVEL_ERROR, code='region_outside_cleanable', region=info.label,
-                message=f'Region "{info.name}" 含 {dirty} 个障碍/未知 cell'))
-        # footprint 可达核心 = Region 掩码经半径腐蚀（机器人中心须能
-        # 停留在 Region 内；腐蚀的是 Region 自身，不是整个可清扫空间）
+                message=f'Region "{info.name}" contains {dirty} occupied/unknown cells'))
+        # Footprint-reachable core = Region mask eroded by the radius (the
+        # robot center must be able to stay inside the Region; the Region
+        # itself is eroded, not the whole cleanable space)
         core = (cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5) * res
                 ) >= robot_inscribed_radius
-        # Error: 腐蚀后为空（永远进不去）
+        # Error: empty after erosion (can never be entered)
         if not core.any():
             report.issues.append(ValidationIssue(
                 level=LEVEL_ERROR, code='region_unreachable', region=info.label,
-                message=f'Region "{info.name}" 经 footprint 半径 '
-                        f'{robot_inscribed_radius} m 腐蚀后为空，机器人无法进入'))
+                message=f'Region "{info.name}" is empty after erosion by footprint '
+                        f'radius {robot_inscribed_radius} m; robot cannot enter'))
         else:
-            # Warning: 可达核心被窄喉断成多片（机器人无法在 Region 内通行）
+            # Warning: reachable core split into multiple pieces by narrow
+            # throats (robot cannot traverse the Region)
             components, n = ndimage.label(core, structure=np.ones((3, 3)))
             counts = np.bincount(components.ravel())
             pieces = int((counts[1:] >= MIN_CORE_COMPONENT_CELLS).sum())
@@ -108,30 +120,31 @@ def validate_region_set(
                 report.issues.append(ValidationIssue(
                     level=LEVEL_WARNING, code='region_disconnected_core',
                     region=info.label,
-                    message=f'Region "{info.name}" 的 footprint 可达核心断成 '
-                            f'{pieces} 片（存在窄于机器人的内部通道）'))
-        # Error: 与 Keepout 相交（不变量；#6 接入）
+                    message=f'Region "{info.name}" footprint-reachable core is split '
+                            f'into {pieces} pieces (internal passage narrower than the robot)'))
+        # Error: intersects a Keepout (invariant; wired in #6)
         if keepout_mask is not None:
             overlap = int((mask & keepout_mask).sum())
             if overlap:
                 report.issues.append(ValidationIssue(
                     level=LEVEL_ERROR, code='region_in_keepout', region=info.label,
-                    message=f'Region "{info.name}" 与 Keepout 相交 {overlap} cell'))
+                    message=f'Region "{info.name}" intersects Keepout in {overlap} cells'))
 
-    # Warning: 未划分的可清扫自由空间
+    # Warning: unassigned cleanable free space
     unassigned = region_set.unassigned_cleanable_mask
     if unassigned.any():
         count = int(unassigned.sum())
         report.issues.append(ValidationIssue(
             level=LEVEL_WARNING, code='unassigned_cleanable',
-            message=f'存在 {count} 个未划分的可清扫 cell'
-                    f'（{count * res * res:.2f} m²）'))
+            message=f'{count} unassigned cleanable cells'
+                    f' ({count * res * res:.2f} m²)'))
 
     return report
 
 
 def check_masks_overlap(masks: dict[int, np.ndarray]) -> list[ValidationIssue]:
-    """逐 Region 掩码的重叠检查（不变量）。供 #5 从 PNG 掩码加载后调用。"""
+    """Overlap check for per-Region masks (invariant). Called after loading
+    from PNG masks in #5."""
     issues = []
     items = sorted(masks.items())
     for i, (label_a, mask_a) in enumerate(items):
@@ -140,5 +153,5 @@ def check_masks_overlap(masks: dict[int, np.ndarray]) -> list[ValidationIssue]:
             if overlap:
                 issues.append(ValidationIssue(
                     level=LEVEL_ERROR, code='region_overlap',
-                    message=f'Region {label_a} 与 Region {label_b} 重叠 {overlap} cell'))
+                    message=f'Region {label_a} and Region {label_b} overlap in {overlap} cells'))
     return issues

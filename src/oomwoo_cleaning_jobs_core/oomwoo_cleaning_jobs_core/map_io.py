@@ -1,16 +1,20 @@
-"""nav2 trinary 格式 ``map.yaml + 图像`` 加载器。
+"""Loader for nav2 trinary format ``map.yaml + image``.
 
-与 nav2 map_server ``map_io.cpp``（jazzy）的 trinary 行为对齐，已核实：
+Aligned with the trinary behavior of nav2 map_server ``map_io.cpp`` (jazzy),
+verified against its source:
 
-- ``occ = 1 - color/255``（``negate: 0``；``negate: 1`` 时为 ``color/255``），
-  color 为颜色通道均值（灰度图即像素值本身）。
-- ``occ >= occupied_thresh`` → 100；``occ <= free_thresh`` → 0；否则 → -1。
-- 含 alpha 通道的图像中 ``alpha < 255`` 的像素一律为 unknown（-1）。
-- 图像顶行对应地图最大 y，加载时垂直翻转为 OccupancyGrid 行序（row 0 = 最底行）。
-- map_saver 固定写像素 0(occupied)/254(free)/205(unknown)，并配
-  ``occupied_thresh: 0.65, free_thresh: 0.196``，保证 205 回读为 unknown。
+- ``occ = 1 - color/255`` (``negate: 0``; ``color/255`` when ``negate: 1``),
+  where color is the mean of the color channels (the pixel value itself for
+  grayscale).
+- ``occ >= occupied_thresh`` -> 100; ``occ <= free_thresh`` -> 0; else -1.
+- In images with an alpha channel, pixels with ``alpha < 255`` are always
+  unknown (-1).
+- The image top row corresponds to the map's maximum y; it is flipped
+  vertically into OccupancyGrid row order on load (row 0 = bottom row).
+- map_saver always writes pixels 0(occupied)/254(free)/205(unknown) with
+  ``occupied_thresh: 0.65, free_thresh: 0.196``, so 205 reads back as unknown.
 
-只支持 ``mode: trinary``（默认）；scale/raw 抛 ValueError。
+Only ``mode: trinary`` (the default) is supported; scale/raw raise ValueError.
 """
 
 from __future__ import annotations
@@ -28,38 +32,38 @@ _SUPPORTED_MODES = ('trinary',)
 
 
 def load_map_file(yaml_path: str | os.PathLike) -> SourceMap:
-    """加载 nav2 trinary ``map.yaml`` 及其引用的图像，返回 SourceMap。"""
+    """Load a nav2 trinary ``map.yaml`` and its referenced image; return a SourceMap."""
     yaml_path = Path(yaml_path)
     with open(yaml_path, 'r', encoding='utf-8') as f:
         meta = yaml.safe_load(f)
     if not isinstance(meta, dict):
-        raise ValueError(f'{yaml_path}: 不是合法的 map.yaml（顶层应为 mapping）')
+        raise ValueError(f'{yaml_path}: not a valid map.yaml (top level must be a mapping)')
 
     mode = str(meta.get('mode', 'trinary')).lower()
     if mode not in _SUPPORTED_MODES:
         raise ValueError(
-            f'{yaml_path}: 仅支持 mode: trinary，得到 {mode!r}'
+            f'{yaml_path}: only mode: trinary is supported, got {mode!r}'
         )
 
     for key in ('image', 'resolution', 'origin'):
         if key not in meta:
-            raise ValueError(f'{yaml_path}: 缺少必需字段 {key!r}')
+            raise ValueError(f'{yaml_path}: missing required field {key!r}')
 
     image_path = Path(meta['image'])
     if not image_path.is_absolute():
         image_path = yaml_path.parent / image_path
     img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
     if img is None:
-        raise ValueError(f'{image_path}: 图像读取失败')
+        raise ValueError(f'{image_path}: failed to read image')
     if img.dtype != np.uint8:
         raise ValueError(
-            f'{image_path}: 仅支持 8-bit 图像，得到 dtype {img.dtype}'
+            f'{image_path}: only 8-bit images are supported, got dtype {img.dtype}'
         )
 
     resolution = float(meta['resolution'])
     origin = meta['origin']
     if len(origin) != 3:
-        raise ValueError(f'{yaml_path}: origin 必须为 [x, y, yaw]')
+        raise ValueError(f'{yaml_path}: origin must be [x, y, yaw]')
     negate = int(meta.get('negate', 0))
     occupied_thresh = float(meta.get('occupied_thresh', 0.65))
     free_thresh = float(meta.get('free_thresh', 0.25))
@@ -71,7 +75,7 @@ def load_map_file(yaml_path: str | os.PathLike) -> SourceMap:
         color = img[:, :, :3].mean(axis=2)
         alpha = img[:, :, 3] if img.shape[2] == 4 else None
     else:
-        raise ValueError(f'{image_path}: 不支持的通道数 {img.shape}')
+        raise ValueError(f'{image_path}: unsupported channel count {img.shape}')
 
     occ = color / 255.0 if negate else (255.0 - color) / 255.0
 
@@ -81,7 +85,7 @@ def load_map_file(yaml_path: str | os.PathLike) -> SourceMap:
     if alpha is not None:
         cells[alpha < 255] = UNKNOWN
 
-    # 图像 row 0 = 顶行（最大 y）→ OccupancyGrid row 0 = 最底行
+    # image row 0 = top row (max y) -> OccupancyGrid row 0 = bottom row
     cells = np.ascontiguousarray(cells[::-1, :])
 
     height, width = cells.shape

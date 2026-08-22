@@ -1,8 +1,8 @@
-# 阶段一 GUI 手动验收
+# Phase 1 GUI manual acceptance
 
-1. 打开已知 nav2 `map.yaml`；确认障碍/未知不可绘制、地图上下方向正确。
-2. 生成候选，选择 Region 后绘制、擦除、新建、重命名、删除、合并和拆分；确认抢占提示及未分类黄色覆盖层。
-3. 保存草稿，重启应用并重新打开同一地图；确认草稿恢复。
-4. 校验后发布；确认 error 阻止发布、warning 显示但允许发布、版本递增。
-5. 点击“启动 /map”，让 transient-local 发布者在应用启动前发布地图；确认收到 retained map。改变一项 cell 后确认提示替换、不迁移/复用旧区域集；关闭窗口后确认订阅和 ROS executor 停止。
-6. 通过“添加 Keepout”输入至少三个 map-frame `x,y` 点；通过“添加 Virtual Wall”输入两点与宽度。确认品红覆盖层可见、Region 被即时裁剪；删除约束后确认可清扫空间恢复但 Region cell 不复活。
+1. Open a known nav2 `map.yaml`; confirm occupied/unknown cells are not paintable and the map's vertical orientation is correct.
+2. Generate candidates; with a Region selected, paint, erase, create, rename, delete, merge, and split; confirm the preemption prompt and the yellow unclassified overlay.
+3. Save a draft, restart the application, and reopen the same map; confirm the draft is restored.
+4. Validate and publish; confirm errors block publishing, warnings are shown but allow publishing, and the version increments.
+5. Click "Start /map", with a transient-local publisher publishing the map before the application starts; confirm the retained map is received. Change one cell and confirm the prompt to replace, without migrating/reusing the old region set; close the window and confirm the subscription and ROS executor stop.
+6. Enter at least three map-frame `x,y` points via "Add Keepout"; enter two points and a width via "Add Virtual Wall". Confirm the magenta overlay is visible and Regions are immediately clipped; after deleting a constraint, confirm cleanable space is restored but clipped Region cells are not revived.

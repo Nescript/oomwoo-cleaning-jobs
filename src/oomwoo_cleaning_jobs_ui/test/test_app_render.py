@@ -42,12 +42,12 @@ def test_primary_flow_names_each_candidate_and_keeps_editing_advanced(monkeypatc
     window.controller.generate_candidates()
     label = window.controller.regions.regions()[0].label
     window._unnamed_candidates = {label}
-    monkeypatch.setattr(QInputDialog, 'getText', lambda *args, **kwargs: ('客厅', True))
+    monkeypatch.setattr(QInputDialog, 'getText', lambda *args, **kwargs: ('Living Room', True))
 
     window.refresh()
     window.name_candidates()
 
-    assert window.controller.regions.names[label] == '客厅'
+    assert window.controller.regions.names[label] == 'Living Room'
     assert not window._unnamed_candidates
     assert window.advanced.isHidden()
     window.toggle_advanced()

@@ -1,6 +1,0 @@
-Workflow completed with 1 child run(s). Return: {
-  "key": "constraint-review",
-  "ok": true,
-  "agent": "reviewer",
-  "runId": "c16ae0ff-bf72-4504-8b02-d8d1e6aee117",
-  "output": "## Review\n- Correct: Map-frame-to-local inverse rotation and cell-center raster coordinates are implemented in `constraints.py:112-130`; yaw coverage is tested in `test/test_constraints.py:62-76`.\n- Correct: Segmentation intersects any supplied effective mask with source-free space and rejects shape mismatches (`segmentation.py:139-155`); RegionSet clipping and validation shape checks are covered in `test/test_constraints.py:79-115`.\n- **Blocker:** Initializing a RegionSet from a segmentation already constrained by Keepout cannot restore cleanability when that constraint is removed. `segment()` returns the restricted `free_mask` (`segmentation.py:155`), and `RegionSet.from_segmentation()` makes it both `cleanable` and, by default, `base_cleanable` (`regions.py:70-82`, `regions.py:55-60`). Therefore `apply_keepout_mask(empty)` recalculates from the alre Trace: 2 event(s).

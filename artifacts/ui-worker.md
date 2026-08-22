@@ -1,6 +1,0 @@
-Workflow completed with 1 child run(s). Return: {
-  "key": "ui-implementation",
-  "ok": true,
-  "agent": "worker",
-  "runId": "56962453-8484-4dd1-9953-a4a3917fc123",
-  "output": "# UI implementation\n\nImplemented `oomwoo_cleaning_jobs_ui` as the approved standalone PyQt5 + rclpy adapter package.\n\n- `map_source.py` converts OccupancyGrid-shaped data to the immutable core SourceMap, retaining raw int8 cells and origin yaw.\n- `ros_map_source.py` owns a transient-local, reliable `/map` subscription adapter.\n- `controller.py` composes file/live maps with core segmentation, RegionSet editing, validation and persistence without duplicating domain rules.\n- `app.py` supplies a file-openable standalone canvas with candidate generation, create/paint/erase, rename/delete/merge/split, draft save and validation-gated publishing. It displays obstacles, unknowns, regions and unassigned space; edit feedback identifies clipped/preempting operations.\n- The concise manual acceptance checklist records mandatory live-map and constraint interaction Trace: 2 event(s).

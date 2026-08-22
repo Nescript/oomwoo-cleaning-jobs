@@ -1,4 +1,4 @@
-"""segmentation 自动分割测试（合成夹具，无头可跑）。"""
+"""Automatic segmentation tests (synthetic fixtures, headless)."""
 
 import numpy as np
 
@@ -18,12 +18,13 @@ from oomwoo_cleaning_jobs_core.segmentation import (
 
 
 def test_two_rooms_split_by_door():
-    """干净双房间+门洞夹具应精确分出 2 个正常置信候选区域。"""
+    """Clean two-room + doorway fixture: exactly 2 normal-confidence candidates."""
     source = make_two_rooms_map()
     result = segment(source)
     assert len(result.regions) == 2
     assert all(not r.low_confidence for r in result.regions)
-    # 每个区域都在 free 空间内、互不重叠、面积合理（远大于 min_region_area）
+    # Each region stays within free space, no overlaps, sane area
+    # (well above min_region_area)
     covered = np.zeros(source.cells.shape, dtype=bool)
     for region in result.regions:
         mask = result.mask_of(region.label)
@@ -34,7 +35,8 @@ def test_two_rooms_split_by_door():
 
 
 def test_regions_stay_within_free_space():
-    """任何候选都不得包含障碍/未知 cell（含房间内未知块周围的分裂情形）。"""
+    """No candidate may contain occupied/unknown cells (including the split
+    lobes around the in-room unknown patch)."""
     source = make_rooms_map()
     result = segment(source, SegmentationParams(saddle_merge_ratio=99.0))
     assert len(result.regions) >= 2
@@ -44,7 +46,8 @@ def test_regions_stay_within_free_space():
 
 
 def test_watershed_ridge_cells_marked_unclassified():
-    """watershed 脊线 cell 应显式标为未分类，且占比很小。"""
+    """Watershed ridge cells are explicitly marked unclassified, and their
+    share stays small."""
     source = make_rooms_map()
     result = segment(source)
     unclassified = result.unclassified_free_mask
@@ -53,9 +56,11 @@ def test_watershed_ridge_cells_marked_unclassified():
 
 
 def test_watershed_does_not_cross_walls():
-    """区域不得越过内墙：左/右房间的**纵深内部**（离墙 >=2 cell）必须分属
-    不同区域（曾用 cv2.watershed 全图淹没，洪水穿墙导致越界）。
-    门洞附近 ±2 cell 的分界线摆动是 maximin 淹没的正常边界行为，不在此限。"""
+    """Regions must not cross the inner wall: the deep interiors (>=2 cells
+    from walls) of the left/right rooms must belong to different regions
+    (cv2.watershed flooded the whole image and crossed walls, previously).
+    Boundary-line wobble within +/-2 cells of the doorway is normal maximin
+    flooding behavior and is excluded here."""
     source = make_two_rooms_map()
     result = segment(source)
     left_inner = result.labels[8:72, 5:28]
@@ -68,15 +73,17 @@ def test_watershed_does_not_cross_walls():
 
 
 def test_unknown_patch_lobes_area_merged():
-    """未知块周围的小凸瓣（均 < min_region_area）由面积合并吸收：
-    含未知块的双房间夹具最终精确 2 个候选。"""
+    """Small lobes around the unknown patch (each < min_region_area) are
+    absorbed by area merging: the two-room fixture with an unknown patch
+    yields exactly 2 candidates."""
     result = segment(make_rooms_map())
     assert len(result.regions) == 2
 
 
 def test_saddle_merge_recombines_wide_opening():
-    """宽开口（26 cells = 1.3 m，鞍部/峰高比 ≈0.87 >= 0.8）的开放式双区
-    由鞍部合并并为 1 个候选；禁用鞍部合并（ratio=99）时为 2 个。"""
+    """Open-plan two zones with a wide opening (26 cells = 1.3 m,
+    saddle/peak ratio ~0.87 >= 0.8) are fused into 1 candidate by saddle
+    merging; with saddle merging disabled (ratio=99) they stay 2."""
     source = make_open_plan_map(opening_cells=26)
     merged = segment(source)
     unmerged = segment(source, SegmentationParams(saddle_merge_ratio=99.0))
@@ -85,27 +92,31 @@ def test_saddle_merge_recombines_wide_opening():
 
 
 def test_door_opening_not_saddle_merged():
-    """真门洞（10 cells = 0.5 m，鞍部/峰高比 ≈0.33）不会被鞍部合并误并。"""
+    """A real doorway (10 cells = 0.5 m, saddle/peak ratio ~0.33) is not
+    fused by saddle merging."""
     result = segment(make_open_plan_map(opening_cells=10))
     assert len(result.regions) == 2
 
 
 def test_doorway_clip_eliminates_spill():
-    """门口切割后，区域不得越过门平面（宽门 0.9 m 也不溢出）。
+    """After doorway clipping, regions must not cross the door plane (no
+    spill even with a wide 0.9 m door).
 
-    maximin 淹没本身会把门两侧 dist 低于门鞍的 cell 分给对门区域；
-    `_clip_doorway_spills` 把边界强制对齐到门洞切割线。"""
-    # 双房间：内墙 col 30，门 rows 35-44
+    maximin flooding itself assigns cells near the door whose dist is below
+    the door saddle to the opposite region; `_clip_doorway_spills` forces
+    the boundary onto the doorway cut line."""
+    # Two rooms: inner wall col 30, doorway rows 35-44
     source = make_two_rooms_map()
     result = segment(source)
     left = result.labels[40, 15]
     right = result.labels[40, 50]
     assert left != right and left != UNCLASSIFIED and right != UNCLASSIFIED
-    # 允许 1 cell 的边界带（脊线未分类），col 33 以右不得有左房间 cell
+    # Allow a 1-cell boundary band (ridge unclassified); no left-room cell
+    # right of col 33
     assert (result.labels[:, 33:] == left).sum() == 0
     assert (result.labels[:, :28] == right).sum() == 0
 
-    # 宽门 0.9 m：内墙 col 32
+    # Wide door 0.9 m: inner wall col 32
     wide = make_open_plan_map(opening_cells=18)
     result = segment(wide)
     assert len(result.regions) == 2
@@ -116,38 +127,42 @@ def test_doorway_clip_eliminates_spill():
 
 
 def test_open_room_degenerates_to_single_low_confidence_candidate():
-    """开间只有一个距离峰：整体作为单一低置信候选。"""
+    """An open room has a single distance peak: the whole space becomes one
+    low-confidence candidate."""
     result = segment(make_open_room_map())
     assert len(result.regions) == 1
     assert result.regions[0].low_confidence
-    # 低置信候选覆盖几乎全部 free 空间
+    # The low-confidence candidate covers almost all free space
     coverage = result.mask_of(result.regions[0].label).sum() / result.free_mask.sum()
     assert coverage > 0.95
 
 
 def test_tiny_room_merged_into_neighbor():
-    """小于 min_region_area 的独立峰区域并入共享边界最长的近邻。"""
+    """A below-min_region_area standalone-peak region merges into the
+    neighbor sharing the longest boundary."""
     source = make_tiny_room_map()
     result = segment(source)
     assert len(result.regions) == 1
     region = result.regions[0]
     assert not region.low_confidence
-    # 合并后区域覆盖小房间内部（col > 68 的 free cell 绝大部分归属该区域，
-    # 允许门洞附近的分水岭脊线 cell 留在未分类）
+    # After merging, the region covers the small room's interior (most free
+    # cells with col > 68 belong to it; watershed ridge cells near the
+    # doorway may stay unclassified)
     right_room_free = source.free_mask()[:, 69:78]
     covered = result.mask_of(region.label)[:, 69:78][right_room_free].sum()
     assert covered >= 0.9 * right_room_free.sum()
 
 
 def test_unknown_cells_never_in_candidates():
-    """unknown（含房间内未知块）不可进入任何候选区域。"""
+    """Unknown cells (including the in-room unknown patch) never enter any
+    candidate region."""
     source = make_rooms_map()
     result = segment(source)
     assert not (result.labels[source.unknown_mask()] != UNCLASSIFIED).any()
 
 
 def test_min_region_area_respected():
-    """所有最终候选都不小于 min_region_area。"""
+    """All final candidates are no smaller than min_region_area."""
     params = SegmentationParams(min_region_area_m2=1.0)
     for make in (make_rooms_map, make_tiny_room_map, make_open_room_map):
         result = segment(make(), params)

@@ -1,6 +1,0 @@
-Workflow completed with 1 child run(s). Return: {
-  "key": "ui-final-review",
-  "ok": true,
-  "agent": "reviewer",
-  "runId": "25dcc215-809a-4f0d-8416-51c35714966b",
-  "output": "## Review\n- **Blocker (High):** File input can silently replace an active editing session and discard unsaved edits. `src/oomwoo_cleaning_jobs_ui/oomwoo_cleaning_jobs_ui/app.py:43-47` calls `controller.set_source(load_map_file(path))` directly; identity confirmation exists only for live `/map` input at `app.py:69-74`. This violates source-replacement safety for file-selected maps (including reopening the same map). Route both inputs through a common guarded replacement flow and preserve the active session for an unchanged identity.\n- **Blocker (Medium):** The required “other maps” identity-state message is absent. `docs/DEVELOPMENT.md:61` requires the GUI to state that no Region Set exists for the current map and report `N` saved sets belonging to other maps. `src/oomwoo_cleaning_jobs_ui/oomwoo_cleaning_jobs_ui/controller.py:17-25` returns only “当前地图没有区域集 Trace: 2 event(s).

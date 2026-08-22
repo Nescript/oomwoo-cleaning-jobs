@@ -1,4 +1,4 @@
-"""Draft / Published Region Set 本地持久化测试。"""
+"""Tests for local persistence of draft / published Region Sets."""
 
 import cv2
 import numpy as np
@@ -78,14 +78,14 @@ def test_load_rejects_map_identity_mismatch_and_overlapping_masks(tmp_path):
     second_mask = path / second['mask']
     first_image = cv2.imread(str(path / first['mask']), cv2.IMREAD_GRAYSCALE)
     assert cv2.imwrite(str(second_mask), first_image)
-    with pytest.raises(ValueError, match='重叠'):
+    with pytest.raises(ValueError, match='overlap'):
         store.load_draft(source)
 
 
 def test_snapshot_keeps_lossless_raw_cells_sidecar(tmp_path):
     source = make_two_rooms_map()
     cells = source.cells.copy()
-    cells[10, 10] = 10  # identity 区分的非三值原始 OccupancyGrid cell
+    cells[10, 10] = 10  # non-trinary raw OccupancyGrid cell that changes identity
     source = type(source)(source.resolution, source.width, source.height,
                           source.origin, cells)
     store = RegionSetStore(tmp_path)
@@ -104,7 +104,7 @@ def test_load_published_revalidates_after_on_disk_edit(tmp_path):
     metadata = yaml.safe_load((published / 'regions.yaml').read_text(encoding='utf-8'))
     image_path = published / metadata['regions'][0]['mask']
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
-    image[source.height - 1 - 4, 10] = 255  # SourceMap row 4 是 occupied 外墙
+    image[source.height - 1 - 4, 10] = 255  # SourceMap row 4 is the occupied outer wall
     assert cv2.imwrite(str(image_path), image)
 
     with pytest.raises(ValueError, match='region_outside_cleanable'):

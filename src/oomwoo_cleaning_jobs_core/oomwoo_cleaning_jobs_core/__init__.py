@@ -1,6 +1,6 @@
-"""oomwoo_cleaning_jobs_core：纯 Python 核心库（零 ROS 依赖）。
+"""oomwoo_cleaning_jobs_core: pure Python core library (zero ROS dependencies).
 
-范围与术语见仓库 docs/DEVELOPMENT.md。
+Scope and terminology: see docs/DEVELOPMENT.md in the repository.
 """
 
 from .constraints import ConstraintSet, Keepout, VirtualWall

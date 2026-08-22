@@ -4,9 +4,10 @@
   <name>oomwoo_cleaning_jobs_core</name>
   <version>0.1.0</version>
   <description>
-    oomwoo_cleaning_jobs 的纯 Python 核心库：地图加载与 identity、自动分割、
-    Region 掩码编辑、空间约束、校验与持久化。零 ROS 依赖，可无头 pytest；
-    ROS 2 仅作为适配层（见 docs/DEVELOPMENT.md）。
+    Pure Python core library for oomwoo_cleaning_jobs: map loading and
+    identity, auto segmentation, Region mask editing, spatial constraints,
+    validation and persistence. Zero ROS dependencies, headless-pytestable;
+    ROS 2 serves only as an adapter layer (see docs/DEVELOPMENT.md).
   </description>
   <maintainer email="dev@example.com">oomwoo</maintainer>
   <license>Apache 2.0</license>

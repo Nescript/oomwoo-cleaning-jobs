@@ -1,4 +1,4 @@
-"""Draft / Published Region Set 的本地持久化。"""
+"""Local persistence of draft / published Region Sets."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class StoredRegionSet:
 
 
 class RegionSetStore:
-    """以 Source Map identity 隔离的 draft/published Region Set 存储。"""
+    """Draft/published Region Set storage partitioned by Source Map identity."""
 
     def __init__(self, root: str | os.PathLike = DEFAULT_STORAGE_ROOT) -> None:
         self.root = Path(root)
@@ -40,7 +40,8 @@ class RegionSetStore:
         self, source_map: SourceMap, region_set: RegionSet,
         constraints: ConstraintSet,
     ) -> Path:
-        """原子替换当前地图的 draft；draft 可以含尚未通过发布校验的内容。"""
+        """Atomically replace the current map's draft; a draft may contain
+        content that has not passed publish validation yet."""
         map_dir = self._map_dir(source_map)
         map_dir.mkdir(parents=True, exist_ok=True)
         self._write_snapshot(map_dir, source_map)
@@ -67,12 +68,13 @@ class RegionSetStore:
         constraints: ConstraintSet,
         robot_inscribed_radius: float = 0.17,
     ) -> StoredRegionSet:
-        """校验后保存 draft，并原子替换唯一的 published Region Set。"""
+        """Save the draft after validation, then atomically replace the single
+        published Region Set."""
         keepout_mask = constraints.mask_for(source_map)
         report = validate_region_set(region_set, robot_inscribed_radius, keepout_mask)
         if not report.ok:
             codes = ', '.join(issue.code for issue in report.errors)
-            raise ValueError(f'无法发布 Region Set：{codes}')
+            raise ValueError(f'cannot publish Region Set: {codes}')
 
         self.save_draft(source_map, region_set, constraints)
         map_dir = self._map_dir(source_map)
@@ -97,7 +99,8 @@ class RegionSetStore:
         raw_path = map_dir / 'map_snapshot.cells.npy'
         if yaml_path.exists() and image_path.exists() and raw_path.exists():
             return
-        # PGM 是给人检查的 nav2 trinary 预览；raw sidecar 才是可保真溯源。
+        # The PGM is a nav2 trinary preview for human inspection; the raw
+        # sidecar is the lossless provenance record.
         raw_temp = raw_path.with_name(f'.{raw_path.name}-{uuid.uuid4().hex}')
         with raw_temp.open('wb') as stream:
             np.save(stream, source_map.cells)
@@ -106,7 +109,7 @@ class RegionSetStore:
         pixels[source_map.cells == FREE] = 254
         pixels[source_map.cells >= OCCUPIED] = 0
         if not cv2.imwrite(str(image_path), pixels[::-1, :]):
-            raise OSError(f'无法写入地图快照 {image_path}')
+            raise OSError(f'failed to write map snapshot {image_path}')
         metadata = {
             'image': image_path.name, 'raw_cells': raw_path.name,
             'resolution': source_map.resolution,
@@ -122,7 +125,7 @@ class RegionSetStore:
         robot_inscribed_radius: float | None = None,
     ) -> None:
         if region_set.labels.shape != source_map.cells.shape:
-            raise ValueError('RegionSet 与 SourceMap 栅格形状不一致')
+            raise ValueError('RegionSet and SourceMap grid shapes differ')
         temp = target.parent / f'.{target.name}-{uuid.uuid4().hex}'
         temp.mkdir(parents=True)
         try:
@@ -131,9 +134,10 @@ class RegionSetStore:
             regions = []
             for info in region_set.regions():
                 mask_path = masks_dir / f'{info.label}.png'
-                # PNG 按通常图像坐标写入；加载时恢复 SourceMap row 0 = 最底行。
+                # PNGs are written in usual image orientation; loading restores
+                # the SourceMap convention row 0 = bottom row.
                 if not cv2.imwrite(str(mask_path), (region_set.mask_of(info.label)[::-1] * 255).astype(np.uint8)):
-                    raise OSError(f'无法写入 Region 掩码 {mask_path}')
+                    raise OSError(f'failed to write Region mask {mask_path}')
                 regions.append({'label': info.label, 'name': info.name, 'mask': f'masks/{info.label}.png'})
             metadata = {'schema_version': SCHEMA_VERSION, 'map_identity': source_map.identity,
                         'regions': regions}
@@ -153,31 +157,31 @@ class RegionSetStore:
     ) -> StoredRegionSet:
         meta = _load_yaml(target / 'regions.yaml')
         if meta.get('schema_version') != SCHEMA_VERSION:
-            raise ValueError(f'{target}: 不支持的 Region Set schema_version')
+            raise ValueError(f'{target}: unsupported Region Set schema_version')
         if meta.get('map_identity') != source_map.identity:
-            raise ValueError(f'{target}: Source Map identity 不匹配')
+            raise ValueError(f'{target}: Source Map identity mismatch')
         constraints = _decode_constraints(_load_yaml(target / 'constraints.yaml'))
         masks: dict[int, np.ndarray] = {}
         names: dict[int, str] = {}
         for region in meta.get('regions', []):
             label = int(region['label'])
             if label <= 0 or label in masks:
-                raise ValueError(f'{target}: Region label 非法或重复')
+                raise ValueError(f'{target}: Region label invalid or duplicated')
             relative_mask = Path(region['mask'])
             expected_mask = Path('masks') / f'{label}.png'
             if relative_mask != expected_mask or relative_mask.is_absolute():
-                raise ValueError(f'{target}: Region 掩码路径非法')
+                raise ValueError(f'{target}: invalid Region mask path')
             image = cv2.imread(str(target / relative_mask), cv2.IMREAD_GRAYSCALE)
             if image is None:
-                raise ValueError(f'{target}: Region 掩码读取失败')
+                raise ValueError(f'{target}: failed to read Region mask')
             mask = image[::-1, :] > 0
             if mask.shape != source_map.cells.shape:
-                raise ValueError(f'{target}: Region 掩码形状不匹配')
+                raise ValueError(f'{target}: Region mask shape mismatch')
             masks[label] = mask
             names[label] = str(region['name'])
         overlap = check_masks_overlap(masks)
         if overlap:
-            raise ValueError(f'{target}: Region 掩码重叠')
+            raise ValueError(f'{target}: Region masks overlap')
         labels = np.zeros(source_map.cells.shape, dtype=np.int32)
         for label, mask in masks.items():
             labels[mask] = label
@@ -185,16 +189,18 @@ class RegionSetStore:
         region_set = RegionSet(labels, source_map.free_mask() & ~keepout_mask,
                                source_map.resolution, source_map.origin, names,
                                base_cleanable=source_map.free_mask())
-        # 保留手改文件中的约束交叉，让发布校验能报告不变量，而非加载时静默裁剪。
+        # Keep constraint intersections from hand-edited files so publish
+        # validation can report the invariant violation, instead of silently
+        # clipping them away at load time.
         region_set.keepout_mask = keepout_mask
         if require_valid:
             radius = meta.get('robot_inscribed_radius')
             if not isinstance(radius, (int, float)) or radius <= 0:
-                raise ValueError(f'{target}: Published Region Set 缺少有效 footprint 半径')
+                raise ValueError(f'{target}: Published Region Set lacks a valid footprint radius')
             report = validate_region_set(region_set, float(radius), keepout_mask)
             if not report.ok:
                 codes = ', '.join(issue.code for issue in report.errors)
-                raise ValueError(f'{target}: Published Region Set 校验失败：{codes}')
+                raise ValueError(f'{target}: Published Region Set failed validation: {codes}')
         return StoredRegionSet(region_set, constraints, meta.get('version'), meta.get('published_at'))
 
 
@@ -211,7 +217,7 @@ def _encode_constraints(constraints: ConstraintSet) -> dict:
 
 def _decode_constraints(data: dict) -> ConstraintSet:
     if data.get('schema_version') != SCHEMA_VERSION:
-        raise ValueError('不支持的 constraints schema_version')
+        raise ValueError('unsupported constraints schema_version')
     return ConstraintSet(
         keepouts=tuple(Keepout(item['identifier'], tuple(tuple(p) for p in item['vertices']))
                        for item in data.get('keepouts', [])),
@@ -226,9 +232,9 @@ def _load_yaml(path: Path) -> dict:
         with path.open(encoding='utf-8') as stream:
             data = yaml.safe_load(stream)
     except (OSError, yaml.YAMLError) as error:
-        raise ValueError(f'无法读取有效的 YAML：{path}') from error
+        raise ValueError(f'failed to read valid YAML: {path}') from error
     if not isinstance(data, dict):
-        raise ValueError(f'{path}: 顶层必须为 mapping')
+        raise ValueError(f'{path}: top level must be a mapping')
     return data
 
 
@@ -240,13 +246,15 @@ def _atomic_yaml_dump(path: Path, data: dict) -> None:
 
 
 def _replace_active_generation(temp: Path, target: Path) -> None:
-    """以原子 symlink 指针切换不可变 generation，崩溃时仍有一个可用版本。"""
+    """Switch immutable generations via an atomic symlink pointer, so a crash
+    always leaves one usable version."""
     generations = target.parent / '.generations'
     generations.mkdir(exist_ok=True)
     generation = generations / f'{target.name}-{uuid.uuid4().hex}'
     os.replace(temp, generation)
 
-    # 旧版实现可能已留下普通目录；首次迁移保留为 generation 后再装 pointer。
+    # A legacy implementation may have left a plain directory; on first
+    # migration, keep it as a generation before installing the pointer.
     if target.exists() and not target.is_symlink():
         legacy = generations / f'{target.name}-legacy-{uuid.uuid4().hex}'
         os.replace(target, legacy)
