@@ -45,9 +45,20 @@ def test_cell_change_changes_identity():
     assert _variant(cells=cells).identity != base.identity
 
 
+def test_resolution_canonicalized_to_float32():
+    """resolution 按 float32 规范化：OccupancyGrid（float32）与 map.yaml
+    （float64）两个来源的同一张地图必须得到相同 identity。"""
+    base = make_rooms_map()
+    f32_resolution = float(np.float32(base.resolution))
+    assert f32_resolution != base.resolution  # 0.05 在 float64/float32 下不同
+    assert _variant(resolution=f32_resolution).identity == base.identity
+
+
 def test_resolution_change_changes_identity():
     base = make_rooms_map()
     assert _variant(resolution=0.051).identity != base.identity
+    # float32 可分辨的差异仍是新地图
+    assert _variant(resolution=base.resolution + 1e-4).identity != base.identity
 
 
 def test_origin_change_changes_identity():

@@ -5,6 +5,8 @@
 clearance_m（山口高度）。
 """
 
+import cv2
+
 from fixtures import (
     make_corridor_apartment_map,
     make_open_plan_map,
@@ -13,6 +15,7 @@ from fixtures import (
     make_two_rooms_map,
 )
 
+import oomwoo_cleaning_jobs_core.segmentation as segmentation
 from oomwoo_cleaning_jobs_core.segmentation import segment
 
 
@@ -61,6 +64,34 @@ def test_grid6_seven_doorways():
     for doorway in result.doorways:
         assert 0.35 <= doorway.width_m <= 0.65
         assert doorway.likely_door
+
+
+def test_transitive_connection_uses_local_contact_saddle():
+    """传递连接的合并树山口不得替代当前区域对的实际门洞。"""
+    source, _ = make_room_grid_map(3, 2)
+    result = segment(source)
+    dist = cv2.distanceTransform(
+        result.free_mask.astype('uint8'), cv2.DIST_L2, 5) * source.resolution
+    connections = segmentation._connection_values(
+        result.labels, dist, result.free_mask)
+
+    # 3x2 网格会产生 direct=False 的传递连接；至少一条真实门洞的
+    # 合并树山口位于其他区域对的门洞，正是溢出裁剪必须避开的情形。
+    divergent = []
+    for doorway in result.doorways:
+        pair = doorway.regions
+        _clearance, tree_cell, direct = connections[pair]
+        contact = (
+            segmentation._geodesic_dilate(result.labels == pair[0], result.free_mask)
+            & segmentation._geodesic_dilate(result.labels == pair[1], result.free_mask)
+        )
+        local_cell = segmentation._contact_saddle_cell(contact, dist)
+        if not direct and tree_cell != local_cell:
+            divergent.append((doorway, local_cell))
+
+    assert divergent
+    for doorway, local_cell in divergent:
+        assert local_cell == doorway.center
 
 
 def test_merged_regions_have_no_doorway():

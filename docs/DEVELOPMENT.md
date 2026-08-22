@@ -40,9 +40,11 @@
 | Segment | Job 中由一种清洁策略处理的目标部分；不必等同一个 Region。 |
 | Coverage artifact | 可校验的已覆盖空间记录（例如 coverage grid）；百分比本身不是 artifact。 |
 
-自动划分是可替换策略（当前为距离变换 + watershed），置信不足时退化为连通自由空间，并显式标出不确定/未分类区域。
+自动划分是可替换策略（当前为距离变换 + maximin 淹没分水岭，见「第一阶段实施决定 · 自动分割」），置信不足时退化为连通自由空间，并显式标出不确定/未分类区域。
 
 手动编辑至少支持创建、移动/删除/重命名、合并/拆分 Region，以及创建 Keepout/Virtual Wall。编辑时的即时裁剪与发布时的校验分级见「第一阶段实施决定」。允许未划分或故意不清扫的自由空间，但 GUI 必须明确呈现。
+
+GUI 主流程已调整为：**自动分割 → 逐个命名候选 Region → 保存/校验并发布**。候选生成后立即按 label 顺序弹出命名对话框；取消可稍后从「逐个命名候选」继续。新建、绘制、擦除、合并、拆分和约束编辑均收纳在默认折叠的「高级编辑（仅在候选有误时使用）」中，仍作为自动分割误差的修正手段。
 
 ## 第一阶段实施决定
 
@@ -50,13 +52,13 @@
 
 ### 包结构
 
-- `src/oomwoo_cleaning_jobs_core`：纯 Python 库，零 ROS 依赖。含地图文件加载、自动分割、掩码编辑、校验、持久化，可无头 pytest。
+- `src/oomwoo_cleaning_jobs_core`：纯 Python 库，零 ROS 依赖。含地图文件加载、自动分割、掩码编辑、约束、校验与持久化，可无头 pytest。
 - `src/oomwoo_cleaning_jobs_ui`：PyQt5 独立应用 + rclpy 节点，薄适配层。
 - `oomwoo_cleaning_interfaces` 推迟到首次出现真实跨进程消息需求（预计阶段二）再建。
 
 ### 地图 identity 与变更检测
 
-identity = SHA-256(`resolution` float64 字节 + `width` + `height` + `origin` position/orientation + 原始 int8 cell 数据)，排除 `header.stamp`、`frame_id`、`map_load_time`，不做三值化。短 id 取前 12 位。
+identity = SHA-256(`resolution` 的 **float32** 字节 + `width` + `height` + `origin` position/orientation + 原始 int8 cell 数据)，排除 `header.stamp`、`frame_id`、`map_load_time`，不做三值化。短 id 取前 12 位。resolution 规范化为 float32：`OccupancyGrid.info.resolution` 是 float32 而 map.yaml 是 float64，不规范化时同一张地图经话题与经文件加载会得到不同 identity（已在 GUI 双来源验证中修复）。
 
 hash 的角色是**变更检测器与存储键**，不是多地图管理。saved map 视为静态制品，唯一变更来源是用户重新建图/保存。hash 变化即新地图：找不到对应 Region Set 时 GUI 明确提示「当前地图无区域集；磁盘上存在 N 份属于其他地图的区域集」。阶段一不做区域集迁移/重投影（原点与分辨率可能全变，像素级迁移不可靠），见未决边界 9。
 
@@ -64,7 +66,11 @@ hash 的角色是**变更检测器与存储键**，不是多地图管理。saved
 
 trinary 加载：`occ = 1 - color/255`（negate=0）；`occ >= occupied_thresh` → 100，`occ <= free_thresh` → 0，否则 -1；`alpha < 255` 一律 unknown；图像顶行对应地图最大 y，加载后垂直翻转。map_saver 固定写像素 0(occupied)/254(free)/205(unknown) 并配 `occupied_thresh: 0.65, free_thresh: 0.196`（205 借此回读为 unknown）。核心库加载器 `map_io.load_map_file` 与上述行为对齐，仅支持 trinary。
 
-已实现：`src/oomwoo_cleaning_jobs_core`（ament_python）含 `source_map.SourceMap`（identity/掩码）、`map_io`、`segmentation`（maximin 淹没 + 合并树鞍部合并 + 门口溢出裁剪 + 门口拓扑记录）、`regions.RegionSet`（掩码编辑：paint/erase/create/delete/rename/merge/split、即时裁剪、后画者抢占、轮廓派生）、`validation`（error/warning 分级校验）、`render`/`render_map` CLI（`oomwoo-render-map`，`--segment` 出叠加图）；`test/` 下合成地图夹具（`fixtures`：双房间/含未知块/开间/极小房间/开放式双区/N 房间网格/走廊户型）与 63 个 pytest，`colcon build/test` 与直接 `pytest` 均已验证通过。演示输出在 `docs/demo/`（真实 living_room 与合成双房间的分割效果图）。
+已修正外部 `oomwoo_sim_support/maps/test_room` 资产链路：PGM 本身以 205 正确表示墙外 unknown，但此前 YAML 使用 `free_thresh: 0.25`，会把 205（occ≈0.196）误判为 free，因而生成墙外候选区域。生成脚本与 sim/deploy YAML 已统一为 `free_thresh: 0.196`。
+
+### 自动分割
+
+距离变换 + 分水岭（OpenCV/scipy 实现）：free mask → distance transform → 局部极大值 markers → **maximin（最宽路径）淹没**（自实现，只在自由空间传播——`cv2.watershed` 在全图淹没会穿墙导致区域溢出，已弃用；瓶颈优先级相同按到种子的测地距离决胜，分界线落在门洞/鞍部处）→ 面积合并（小于 `min_region_area`，默认 1 m²，并入**连接最宽**的邻域——按共享边界长度会穿门漏并，已弃用）→ **鞍部合并**（`_connection_values` 超水平集合并树给出与分界线无关的真实山口高度；山口 ≥ `saddle_merge_ratio`（默认 0.8）× 较小峰高时并查集合并；真门洞比值通常 < 0.5，同片开阔地的伪分割 > 0.8）→ **门口溢出裁剪**（`_clip_doorway_spills`：maximin 会把门两侧 dist 低于门鞍的 cell 分给对门区域形成溢出带；此处对每对相邻区域在合并树山口 cell 处生成切割线，暂时阻断后把落在对方连通体的 cell 重归对方，边界强制对齐门洞）→ 脊线标记（接触带两侧各一层 cell 标为未分类）。distance peaks 退化（大开间单峰）时整体作为单一候选并标低置信。阈值均为参数。该算法是「先用它看效果」的初始策略，可替换。
 
 分割已知特性：maximin 淹没 + 合并树鞍部合并后，真实 living_room（单房间多家具）在 ratio 0.5–0.8 全区间精确收敛为 1 个候选、0 未分类；5/6/7 房间网格、4 房间+走廊户型、贴墙家具场景均精确分出预期房间数；真门洞（0.5 m）不被误并，宽开口（1.3 m）正确合并。残留边界情形：小房间配宽门（比值 0.6–0.8 区间）可能误并/误分，由 GUI 手动编辑修正；距离值低于 `min_peak_height_m` 的狭窄地带不产生种子，留在未分类；0.5 m 宽的家具缝隙与 0.5 m 门洞在几何上不可区分（语义问题），依赖用户审核候选。
 
@@ -77,15 +83,11 @@ trinary 加载：`occ = 1 - color/255`（negate=0）；`occ >= occupied_thresh` 
 - 形态学 closing 预处理对薄墙有害（腐蚀碎裂墙网），仅适合真实噪声地图。
 - 门口/拓扑作为一等公民是该方案的真实价值（阶段二 Segment 排序与导航需要）；后续可考虑混合：watershed 出区域 + 合并树山口作为门口记录。
 
-**混合路线已实现**（segmentation.py）：区域生成保持 maximin 淹没 + 合并树；`SegmentationResult.doorways` 输出门口记录（`Doorway`：相邻区域对、山口 center、clearance、width ≈ 2×clearance、ratio、likely_door），`adjacent_labels()` 给出拓扑邻接。实现要点：相邻对用**测地膨胀接触带**（普通膨胀会穿墙、会多跨脊线）判定；墙角对角相邻按 clearance 下限滤除；同一对区域多扇门只记录山口最高的一扇。渲染叠加品红门口标记，CLI 打印拓扑边。测试 `test_topology.py`（54 个 pytest 总计）。
+**混合路线已实现**（segmentation.py）：区域生成保持 maximin 淹没 + 合并树；`SegmentationResult.doorways` 输出门口记录（`Doorway`：相邻区域对、山口 center、clearance、width ≈ 2×clearance、ratio、likely_door），`adjacent_labels()` 给出拓扑邻接。实现要点：相邻对用**测地膨胀接触带**（普通膨胀会穿墙、会多跨脊线）判定；墙角对角相邻按 clearance 下限滤除；同一对区域多扇门只记录山口最高的一扇。渲染叠加品红门口标记，CLI 打印拓扑边。测试 `test_topology.py`（89 个 pytest 总计，core 78 + ui 11）。
 
-已知风险（2026-08-22 双轴评审记录，未修改）：`_clip_doorway_spills` 以合并树山口 cell 作切割中心，而 `_find_doorways` 已弃用合并树（「先开的门吸收了区域」）；对 `direct=False` 的传递连接相邻对，山口 cell 可能落在第三方区域边界而非该对门洞，导致切割线错位。现有分离校验 `continue` 兑底。待补针对「传递连接相邻对」的回归测试后再评估是否改用测地接触带定位切割中心。
+已知风险（2026-08-22，已补特征测试）：`_clip_doorway_spills` 仍以合并树山口 cell 作切割中心；`test_transitive_connection_uses_local_contact_saddle` 证实 3×2 网格的 `direct=False` 传递连接中，该山口可与当前 Region 对的测地接触带山口不同。曾尝试对传递连接改用接触带，但会令带家具网格和走廊户型的房间内部发生跨门混标，已回退。需构造能复现实际切割错误的 fixture 后，再评估以门洞方向/双侧峰连通性约束的局部定位方案。
 
 演示图：`docs/demo/`（主方案分割+门口标记）与 `docs/demo/doorway/`（门口切割方案三联图）。
-
-### 自动分割
-
-距离变换 + 分水岭（OpenCV/scipy 实现）：free mask → distance transform → 局部极大值 markers → **maximin（最宽路径）淹没**（自实现，只在自由空间传播——`cv2.watershed` 在全图淹没会穿墙导致区域溢出，已弃用；瓶颈优先级相同按到种子的测地距离决胜，分界线落在门洞/鞍部处）→ 面积合并（小于 `min_region_area`，默认 1 m²，并入**连接最宽**的邻域——按共享边界长度会穿门漏并，已弃用）→ **鞍部合并**（`_connection_values` 超水平集合并树给出与分界线无关的真实山口高度；山口 ≥ `saddle_merge_ratio`（默认 0.8）× 较小峰高时并查集合并；真门洞比值通常 < 0.5，同片开阔地的伪分割 > 0.8）→ **门口溢出裁剪**（`_clip_doorway_spills`：maximin 会把门两侧 dist 低于门鞍的 cell 分给对门区域形成溢出带；此处对每对相邻区域在合并树山口 cell 处生成切割线，暂时阻断后把落在对方连通体的 cell 重归对方，边界强制对齐门洞）→ 脊线标记（接触带两侧各一层 cell 标为未分类）。distance peaks 退化（大开间单峰）时整体作为单一候选并标低置信。阈值均为参数。该算法是「先用它看效果」的初始策略，可替换。
 
 ### Region 表示与编辑语义
 
@@ -109,13 +111,22 @@ Warning（允许发布，GUI 必须显著呈现）：存在未划分的可清扫
 - `draft/`：`regions.yaml`（Region 元数据）+ `masks/*.png`（1-bit 掩码，可用看图工具检查）+ `constraints.yaml`（Keepout/Virtual Wall 几何）。
 - `published/`：同构。一张地图任一时刻至多一个 Published Region Set；发布 = 校验通过后复制 draft 并记录版本号与时间戳。
 
+已实现：`persistence.RegionSetStore` 以完整 Source Map identity 为目录键，首次保存时写 `map_snapshot.{yaml,pgm}` 预览及无损 `map_snapshot.cells.npy` 原始 cell 侧车；draft 与 published 指向不可变 generation 目录，并通过原子 symlink 指针切换。`publish()` 先按当前 Keepout 校验，再保存 draft、切换 published，并递增版本/记录 UTC 时间及 footprint 半径。加载会校验 schema、identity、PNG 掩码形状与掩码重叠；Published 会按保存的 footprint 半径重校验，draft 可保留发布校验错误以供 GUI 显示。
+
 ### Keepout / Virtual Wall
 
 纳入阶段一。Keepout 从 Cleanable Space 扣除；Virtual Wall 是线状 Keepout，以线膨胀为多边形处理。约束与 Region 共享持久化与校验管线。
 
+已实现核心模型：`constraints.ConstraintSet` 集合 `Keepout`（map-frame 多边形）与 `VirtualWall`（显式 `width_m` 的中心线），并按 Source Map 的 origin/yaw 栅格化。调用者将 `source.free_mask() & ~constraints.mask_for(source)` 传入 `segment(..., cleanable_mask=...)`；若由该候选初始化 Region Set，必须把原始 `source.free_mask()` 与当前约束 mask 分别传给 `RegionSet.from_segmentation(..., base_cleanable=..., keepout_mask=...)`。约束变化后用 `RegionSet.apply_keepout_mask()` 立即裁掉已有 Region cell。移除约束只恢复可清扫空间，不复活被裁掉的 Region cell。
+
 ### 测试策略
 
 pytest 无头：合成地图（走廊 + 多房间，可精确断言分割数量、无重叠、校验判错）为主；仓库内提交 1–2 张真实保存地图做冒烟回归（分割不崩、候选数在合理区间）。GUI 不进 CI，保留手动验收清单。
+
+### 实现状态
+
+已实现：`src/oomwoo_cleaning_jobs_core`（ament_python）含 `source_map.SourceMap`（identity/掩码）、`map_io`、`segmentation`（maximin 淹没 + 合并树鞍部合并 + 门口溢出裁剪 + 门口拓扑记录，支持外部 cleanable mask）、`regions.RegionSet`（掩码编辑：paint/erase/create/delete/rename/merge/split、即时裁剪、后画者抢占、轮廓派生、Keepout 应用）、`constraints`（map-frame 多边形 Keepout、显式宽度 Virtual Wall、origin yaw 栅格化）、`validation`（error/warning 分级校验）、`render`/`render_map` CLI（`oomwoo-render-map`，`--segment` 出叠加图）；`test/` 下合成地图夹具（`fixtures`：双房间/含未知块/开间/极小房间/开放式双区/N 房间网格/走廊户型）与 78 个核心 pytest 及 `oomwoo_cleaning_jobs_ui/test` 下的 11 个 GUI/适配器测试（含坐标映射、命名健壮性、编辑门控、拆分反馈的回归验证）。`oomwoo_cleaning_jobs_ui` 已作为独立 PyQt5 + rclpy 包实现文件载入、候选审核、Region 编辑、Keepout/Virtual Wall 坐标输入、草稿/发布；`RosMapSource` 通过 executor 线程提供 transient-local `/map` 适配，GUI 线程会在 identity 变化时要求确认替换编辑会话，identity 未变则保留当前编辑；当前地图没有区域集时会明确显示其他地图的区域集数量。GUI 手动验收清单在 `src/oomwoo_cleaning_jobs_ui/docs/MANUAL_ACCEPTANCE.md`。演示输出在 `docs/demo/`（真实 living_room 与合成双房间的分割效果图）。
+
 
 ## 覆盖执行事实与集成方向
 

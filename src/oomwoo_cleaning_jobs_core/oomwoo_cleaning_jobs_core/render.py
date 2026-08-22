@@ -11,7 +11,7 @@ from .source_map import SourceMap
 COLOR_FREE = (255, 255, 255)
 COLOR_OCCUPIED = (0, 0, 0)
 COLOR_UNKNOWN = (160, 160, 160)
-#: 可清扫但未分类的 cell（ watershed 脊线、合并失败等）
+#: 可清扫但未分类的 cell（分水岭脊线、合并失败等）
 COLOR_UNCLASSIFIED = (0, 165, 255)  # 橙色（BGR）
 
 

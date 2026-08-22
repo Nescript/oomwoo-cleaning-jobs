@@ -1,0 +1,19 @@
+## Review
+
+- Correct: `RegionSetStore` keys storage by full `SourceMap.identity` and verifies stored `map_identity` on load (`src/oomwoo_cleaning_jobs_core/oomwoo_cleaning_jobs_core/persistence.py:79, 135-137`). PNG masks are vertically flipped on write/read and shape/overlap-checked (`:114-115, 145-153`). Constraints are serialized for both Keepout and VirtualWall (`:166-171, 178-183`). ROS package metadata declares NumPy/OpenCV/SciPy/PyYAML runtime dependencies (`package.xml:14-17`).
+
+- **Blocker — atomic replacement is not crash-atomic.** `persistence.py:208-218` first renames the live directory to a backup (`:210-211`) and only then renames the temporary directory into its place (`:213`). A process/power failure between those operations leaves no `draft/` or `published/` directory; `load_*` returns `None` and does not recover the backup. This contradicts `docs/DEVELOPMENT.md:112`’s atomic-replacement claim and can make a valid Published set disappear.  
+  **Smallest safe fix:** store immutable generation directories and atomically replace a file/symlink pointer to the active generation (with recovery/cleanup), rather than swapping two non-empty directories.
+
+- **Blocker — map snapshots do not preserve the documented raw SourceMap semantics.** `persistence.py:88-90` converts every cell other than exact `FREE` (`0`) and `OCCUPIED` (`100`) to unknown (`205`). The documented identity intentionally uses raw int8 cells without trinarization (`docs/DEVELOPMENT.md:59`), and `test_map_identity.py:67-75` verifies that a free value of `10` differs from `0`. Saving such a map makes `10` become unknown when `map_snapshot.yaml` is reloaded through `map_io.load_map_file`, so the snapshot no longer represents the stored map and has a different identity.  
+  **Smallest safe fix:** persist a lossless raw-cell sidecar (for example `.npy`) as the provenance source, or explicitly constrain `SourceMap` inputs to trinary values and reject others. Add a non-trinary snapshot round-trip/identity test.
+
+- **High — `load_published()` can return a Published set that no longer satisfies publish invariants.** `load_published()` delegates directly to `_load_set()` (`persistence.py:76-78`), which only checks schema, identity, mask shape, and inter-mask overlap (`:131-164`). A post-publish PNG edit that adds an occupied or Keepout cell while preserving shape and non-overlap is returned as Published even though `validate_region_set()` would report `region_outside_cleanable` or `region_in_keepout`. This conflicts with the documented definition of Published Region Set as validated (`docs/DEVELOPMENT.md:38`).  
+  **Smallest safe fix:** validate loaded Published data before returning it. Persist the validation radius with published metadata (the API permits a non-default radius at `persistence.py:54-58`) so revalidation uses the original criterion.
+
+- **Medium — malformed persistence files do not consistently produce GUI-usable load errors.** `_load_yaml()` catches only `OSError` (`persistence.py:191-200`); invalid YAML raises `yaml.YAMLError`. Missing/wrong region fields can also escape as `KeyError`, `TypeError`, or arbitrary conversion errors (`:140-149`), and mask paths are not restricted to the snapshot’s `masks/` directory.  
+  **Smallest safe fix:** normalize YAML/parser/schema failures into contextual `ValueError`s at the public load boundary and require each mask path to be a relative, confined `masks/<label>.png` path.
+
+- Note: `test_persistence.py:24-93` covers normal round-trip, version increments, identity-directory isolation, overlap rejection, and publish-time validation. It does not cover interruption during replacement, raw-cell snapshot fidelity, malformed YAML/path confinement, or invalid Published data after on-disk modification.
+
+- Note: No commands were run, per the read-only review constraint. The reported `75 passed` suite result was not independently verified.

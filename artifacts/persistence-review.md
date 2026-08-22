@@ -1,0 +1,6 @@
+Workflow completed with 1 child run(s). Return: {
+  "key": "persistence-review",
+  "ok": true,
+  "agent": "reviewer",
+  "runId": "cf381964-d8c6-45a1-b101-e8613c9ca203",
+  "output": "## Review\n\n- Correct: `RegionSetStore` keys storage by full `SourceMap.identity` and verifies stored `map_identity` on load (`src/oomwoo_cleaning_jobs_core/oomwoo_cleaning_jobs_core/persistence.py:79, 135-137`). PNG masks are vertically flipped on write/read and shape/overlap-checked (`:114-115, 145-153`). Constraints are serialized for both Keepout and VirtualWall (`:166-171, 178-183`). ROS package metadata declares NumPy/OpenCV/SciPy/PyYAML runtime dependencies (`package.xml:14-17`).\n\n- **Blocker — atomic replacement is not crash-atomic.** `persistence.py:208-218` first renames the live directory to a backup (`:210-211`) and only then renames the temporary directory into its place (`:213`). A process/power failure between those operations leaves no `draft/` or `published/` directory; `load_*` returns `None` and does not recover the backup. This con Trace: 2 event(s).

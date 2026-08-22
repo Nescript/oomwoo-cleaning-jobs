@@ -1,5 +1,7 @@
 """RegionSet 编辑语义测试（对应 DEVELOPMENT.md 编辑语义决定）。"""
 
+import math
+
 import numpy as np
 import pytest
 
@@ -71,6 +73,18 @@ def test_paint_preempts_existing_region():
     assert lost == band_a  # a 恰好失去带内全部 cell，不多不少
     assert rs.mask_of(b)[10:20, 10:25].all()
     assert not rs.mask_of(a)[10:20, 10:25].any()
+
+
+def test_full_preemption_prunes_empty_region_name():
+    """后画者完全夺走旧 Region 时，不保留不可达的名称元数据。"""
+    _, rs = _make_region_set()
+    a, b = [r.label for r in rs.regions()]
+
+    assert rs.paint(b, rs.mask_of(a))
+
+    assert not rs.mask_of(a).any()
+    assert a not in rs.names
+    assert all(region.label != a for region in rs.regions())
 
 
 def test_create_and_delete_and_rename():
@@ -168,6 +182,27 @@ def test_outline_derives_polygon_in_map_frame():
     assert outer[:, 0].max() <= ox + 31 * res
     assert outer[:, 1].min() >= oy + 4 * res
     assert outer[:, 1].max() <= oy + 76 * res
+
+
+def test_outline_honors_map_origin_yaw():
+    labels = np.zeros((10, 10), dtype=np.int32)
+    labels[2:4, 4:6] = 1
+    region_set = RegionSet(
+        labels=labels,
+        cleanable=np.ones(labels.shape, dtype=bool),
+        resolution=1.0,
+        origin=(10.0, 20.0, math.pi / 2),
+        names={1: '旋转区域'},
+    )
+
+    outline = region_set.outline(1)[0]
+
+    # local cells cols 4..5、rows 2..3 经 90° 旋转后：
+    # x = 10 - local_y，y = 20 + local_x。
+    assert np.isclose(outline[:, 0].min(), 6.5)
+    assert np.isclose(outline[:, 0].max(), 7.5)
+    assert np.isclose(outline[:, 1].min(), 24.5)
+    assert np.isclose(outline[:, 1].max(), 25.5)
 
 
 def test_unassigned_cleanable_mask():

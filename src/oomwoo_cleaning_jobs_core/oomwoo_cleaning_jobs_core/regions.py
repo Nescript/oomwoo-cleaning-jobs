@@ -47,16 +47,24 @@ class RegionSet:
         resolution: float,
         origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
         names: dict[int, str] | None = None,
+        base_cleanable: np.ndarray | None = None,
+        keepout_mask: np.ndarray | None = None,
     ) -> None:
         labels = np.ascontiguousarray(labels, dtype=np.int32)
         cleanable = np.asarray(cleanable, dtype=bool)
-        if labels.shape != cleanable.shape:
-            raise ValueError('labels 与 cleanable 形状不一致')
+        base_cleanable = (cleanable if base_cleanable is None
+                          else np.asarray(base_cleanable, dtype=bool))
+        if labels.shape != cleanable.shape or labels.shape != base_cleanable.shape:
+            raise ValueError('labels、cleanable 与 base_cleanable 形状必须一致')
         self.labels = labels
-        self.cleanable = cleanable
+        self.base_cleanable = base_cleanable.copy()
+        self.keepout_mask = np.zeros(labels.shape, dtype=bool)
+        self.cleanable = cleanable.copy()
+        self.names: dict[int, str] = dict(names or {})
+        if keepout_mask is not None:
+            self.apply_keepout_mask(keepout_mask)
         self.resolution = float(resolution)
         self.origin = origin
-        self.names: dict[int, str] = dict(names or {})
 
     @classmethod
     def from_segmentation(
@@ -65,15 +73,25 @@ class RegionSet:
         resolution: float,
         origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
         cleanable: np.ndarray | None = None,
+        base_cleanable: np.ndarray | None = None,
+        keepout_mask: np.ndarray | None = None,
     ) -> RegionSet:
-        """从自动分割结果初始化 draft（候选区域转为可编辑 Region）。"""
+        """从自动分割结果初始化 draft（候选区域转为可编辑 Region）。
+
+        分割若已排除 Keepout，调用者必须同时传入原始 free mask 作为
+        ``base_cleanable`` 及当前约束 mask，才能在日后移除约束时正确恢复
+        可清扫空间；被裁掉的 Region cell 仍不会自动复活。
+        """
+        cleanable = result.free_mask if cleanable is None else cleanable
         names = {r.label: f'Region {r.label}' for r in result.regions}
         return cls(
             labels=result.labels.copy(),
-            cleanable=result.free_mask if cleanable is None else cleanable,
+            cleanable=cleanable,
             resolution=resolution,
             origin=origin,
             names=names,
+            base_cleanable=base_cleanable,
+            keepout_mask=keepout_mask,
         )
 
     # ---- 查询 ----
@@ -101,8 +119,8 @@ class RegionSet:
     def outline(self, label: int) -> list[np.ndarray]:
         """派生几何轮廓（map frame，米）：[外环, 孔洞1, ...]，每个为 (N, 2) float。
 
-        坐标约定：x = origin.x + (col+0.5)*res，y = origin.y + (row+0.5)*res
-        （cells row 0 = 最底行，与 map frame y 轴同向）。
+        坐标约定：``(x, y) = origin.xy + R(origin.yaw) *
+        ((col+0.5)*res, (row+0.5)*res)``；cells row 0 是本地地图的最底行。
         """
         self._require(label)
         mask = self.mask_of(label).astype(np.uint8)
@@ -113,14 +131,37 @@ class RegionSet:
         # findContours 返回 (x=col, y=row 图像序)；本数组 row 0 = 底行，
         # 与 map frame 同向，无需翻转
         res = self.resolution
-        ox, oy = self.origin[0], self.origin[1]
+        ox, oy, yaw = self.origin
+        cos_yaw = np.cos(yaw)
+        sin_yaw = np.sin(yaw)
         rings = []
         for contour in contours:
             pts = contour[:, 0, :].astype(np.float64)  # (N, 2): (col, row)
-            xs = ox + (pts[:, 0] + 0.5) * res
-            ys = oy + (pts[:, 1] + 0.5) * res
+            local_x = (pts[:, 0] + 0.5) * res
+            local_y = (pts[:, 1] + 0.5) * res
+            xs = ox + cos_yaw * local_x - sin_yaw * local_y
+            ys = oy + sin_yaw * local_x + cos_yaw * local_y
             rings.append(np.stack([xs, ys], axis=1))
         return rings
+
+    # ---- 空间约束 ----
+
+    def apply_keepout_mask(self, keepout_mask: np.ndarray) -> None:
+        """应用当前 Keepout 并即时裁掉受限 Region cell。
+
+        移除约束只恢复可清扫空间，不恢复曾被裁掉的 Region cell，避免把用户
+        已明确移除的内容或已被其他操作接管的内容凭空写回。
+        """
+        keepout_mask = np.asarray(keepout_mask, dtype=bool)
+        if keepout_mask.shape != self.labels.shape:
+            raise ValueError('keepout_mask 与 RegionSet 形状不一致')
+        self.keepout_mask = keepout_mask.copy()
+        self.cleanable = self.base_cleanable & ~self.keepout_mask
+        self.labels[~self.cleanable] = UNASSIGNED
+        self.names = {
+            label: name for label, name in self.names.items()
+            if (self.labels == label).any()
+        }
 
     # ---- 编辑操作 ----
 
@@ -134,6 +175,7 @@ class RegionSet:
         if not cells.any():
             return False
         self.labels[cells] = label  # 覆盖即抢占
+        self._prune_empty_names()
         return True
 
     def create(self, stroke: np.ndarray, name: str | None = None) -> int | None:
@@ -143,6 +185,7 @@ class RegionSet:
             return None
         label = self._next_label()
         self.labels[cells] = label
+        self._prune_empty_names()
         self.names[label] = name or f'Region {label}'
         return label
 
@@ -209,6 +252,12 @@ class RegionSet:
         return True
 
     # ---- 内部 ----
+
+    def _prune_empty_names(self) -> None:
+        self.names = {
+            label: name for label, name in self.names.items()
+            if (self.labels == label).any()
+        }
 
     def _require(self, label: int) -> None:
         if not self.mask_of(label).any():

@@ -5,9 +5,13 @@
 核心库零 ROS 依赖：ROS 适配层负责把 ``nav_msgs/msg/OccupancyGrid``
 转成 :class:`SourceMap`。identity 规则（与文档一致）：
 
-SHA-256(resolution 的 float64 字节 + width + height
+SHA-256(resolution 的 **float32** 字节 + width + height
         + origin position(x, y, 0) 与 orientation 四元数(0, 0, sin(yaw/2), cos(yaw/2))
         + 原始 int8 cell 数据)
+
+resolution 规范化为 float32 是因为 `OccupancyGrid.info.resolution` 为
+float32 而 map.yaml 为 float64；不规范化时同一张地图经话题与经文件
+会得到不同 identity。
 
 排除 ``header.stamp`` / ``frame_id`` / ``map_load_time``，不做三值化；
 因此 ``SourceMap`` 干脆不携带这些字段。短 id 取 identity 前 12 位。
@@ -62,12 +66,17 @@ class SourceMap:
 
     @property
     def identity(self) -> str:
-        """内容 hash（完整 sha256 hex）。hash 变更即视为新地图。"""
+        """内容 hash（完整 sha256 hex）。hash 变更即视为新地图。
+
+        resolution 先规范化为 float32 字节：`nav_msgs/OccupancyGrid.info.
+        resolution` 是 float32，而 map.yaml 里是 float64——同一张地图
+        经 /map 话题与经文件加载必须得到相同 identity。origin 在两个
+        来源都是 float64（geometry_msgs/Pose），直接打包。"""
         x, y, yaw = self.origin
         qz = math.sin(yaw / 2.0)
         qw = math.cos(yaw / 2.0)
         h = hashlib.sha256()
-        h.update(struct.pack('<d', self.resolution))
+        h.update(struct.pack('<f', self.resolution))  # float32 规范化
         h.update(struct.pack('<II', self.width, self.height))
         # origin position (x, y, z=0) + orientation quaternion (0, 0, qz, qw)
         h.update(struct.pack('<ddddddd', x, y, 0.0, 0.0, 0.0, qz, qw))

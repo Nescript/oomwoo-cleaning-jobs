@@ -70,6 +70,10 @@ def validate_region_set(
     report = ValidationReport()
     res = region_set.resolution
     cleanable = region_set.cleanable
+    if keepout_mask is not None:
+        keepout_mask = np.asarray(keepout_mask, dtype=bool)
+        if keepout_mask.shape != region_set.labels.shape:
+            raise ValueError('keepout_mask 与 RegionSet 形状不一致')
 
     regions = region_set.regions()
     if not regions:

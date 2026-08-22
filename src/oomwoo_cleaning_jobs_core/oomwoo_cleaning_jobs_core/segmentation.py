@@ -11,10 +11,11 @@
 4. 小区域合并（`_merge_small_regions`）：小于 ``min_region_area`` 的区域
    并入**连接最宽**（合并树山口最高）的近邻；山口并列时退化为共享边界
    最长者；无近邻则标为未分类。
-5. **鞍部合并**（`_merge_by_saddle`）：相邻区域的鞍部（共享边界上距离变换
-   的最大值 = 两区域间最宽通道的半宽）不低于 ``saddle_merge_ratio`` ×
-   较小峰高时合并——两区域间存在足够宽的通道即同一片开阔空间；
-   真门洞的鞍部显著低于两侧峰高，不会被误并。传递闭包用并查集。
+5. **鞍部合并**（`_merge_by_saddle`）：相邻区域的鞍部（`_connection_values`
+   超水平集合并树给出的真实山口高度 = 两区域间最宽通道的半宽，与分界线
+   落点无关）不低于 ``saddle_merge_ratio`` × 较小峰高时合并——两区域间
+   存在足够宽的通道即同一片开阔空间；真门洞的鞍部显著低于两侧峰高，
+   不会被误并。传递闭包用并查集。
 6. **门口溢出裁剪**（`_clip_doorway_spills`）：maximin 会把门两侧 dist 低于
    门鞍的 cell 分给对门区域形成溢出带；对每对相邻区域在合并树山口 cell
    处生成切割线，暂时阻断后把落在对方连通体的 cell 重归对方，
@@ -133,10 +134,26 @@ class SegmentationResult:
         return out
 
 
-def segment(source_map: SourceMap, params: SegmentationParams | None = None) -> SegmentationResult:
+def segment(
+    source_map: SourceMap,
+    params: SegmentationParams | None = None,
+    cleanable_mask: np.ndarray | None = None,
+) -> SegmentationResult:
+    """自动分割 Source Map 的允许清扫空间。
+
+    ``cleanable_mask`` 供 Keepout 等外部约束收窄候选空间；它不能把
+    障碍/未知变成可清扫 cell，且必须与 Source Map 栅格同 shape。
+    """
     params = params or SegmentationParams()
     res = source_map.resolution
-    free = source_map.free_mask(params.free_thresh)
+    source_free = source_map.free_mask(params.free_thresh)
+    if cleanable_mask is None:
+        free = source_free
+    else:
+        cleanable_mask = np.asarray(cleanable_mask, dtype=bool)
+        if cleanable_mask.shape != source_free.shape:
+            raise ValueError('cleanable_mask 与 SourceMap 栅格形状不一致')
+        free = source_free & cleanable_mask
     structure = np.ones((3, 3), dtype=np.int32)  # 8-连通
 
     size_cells = max(3, int(round(params.marker_neighborhood_m / res)) | 1)
@@ -378,6 +395,28 @@ def _merge_by_saddle(
     return out
 
 
+def _geodesic_dilate(mask: np.ndarray, free: np.ndarray, steps: int = 2) -> np.ndarray:
+    """在自由空间内膨胀，避免普通膨胀跨过墙体。"""
+    kernel3 = np.ones((3, 3), dtype=np.uint8)
+    out = mask & free
+    for _ in range(steps):
+        out = (cv2.dilate(out.astype(np.uint8), kernel3) > 0) & free
+    return out
+
+
+def _contact_saddle_cell(
+    contact: np.ndarray,
+    dist: np.ndarray,
+) -> tuple[int, int]:
+    """返回两个 Region 测地接触带内 clearance 最大的 cell。"""
+    if contact.shape != dist.shape:
+        raise ValueError('contact 与 dist 形状不一致')
+    if not contact.any():
+        raise ValueError('接触带不能为空')
+    contact_dist = np.where(contact, dist, -np.inf)
+    return tuple(int(v) for v in np.unravel_index(contact_dist.argmax(), dist.shape))
+
+
 def _find_doorways(
     labels: np.ndarray,
     dist: np.ndarray,
@@ -395,18 +434,9 @@ def _find_doorways(
     把后连通的实际相邻对标记为传递连接（先开的门"吸收"了区域）。
     同一对区域间若有多扇门，只记录山口最高的一扇。
     """
-    kernel3 = np.ones((3, 3), dtype=np.uint8)
-
-    def geo_dilate(mask: np.ndarray, steps: int = 2) -> np.ndarray:
-        """测地膨胀：只在 free 内扩张，不穿墙。"""
-        out = mask & free
-        for _ in range(steps):
-            out = (cv2.dilate(out.astype(np.uint8), kernel3) > 0) & free
-        return out
-
     values = [int(v) for v in np.unique(labels) if v != UNCLASSIFIED]
     dilated: dict[int, np.ndarray] = {
-        v: geo_dilate(labels == v) for v in values
+        v: _geodesic_dilate(labels == v, free) for v in values
     }
     peaks = {v: float(dist[labels == v].max()) for v in values}
     doorways: list[Doorway] = []
@@ -416,9 +446,7 @@ def _find_doorways(
             if not contact.any():
                 continue
             # 局部山口 = 接触带中 dist 最大的 cell
-            contact_dist = np.where(contact, dist, -np.inf)
-            center = tuple(
-                int(v) for v in np.unravel_index(contact_dist.argmax(), dist.shape))
+            center = _contact_saddle_cell(contact, dist)
             clearance = float(dist[center])
             # 墙角对角相邻（十字墙交叉处）的接触带 clearance 极低，滤除
             if clearance < params.min_door_width_m / 2:
@@ -498,16 +526,8 @@ def _clip_doorway_spills(
     多数表决归边。切割未能把 A∪B 分成两个分含各自峰的连通体时保持原样。
     """
     connections = _connection_values(labels, dist, free)
-    kernel3 = np.ones((3, 3), dtype=np.uint8)
-
-    def geo_dilate(mask: np.ndarray, steps: int = 2) -> np.ndarray:
-        out = mask & free
-        for _ in range(steps):
-            out = (cv2.dilate(out.astype(np.uint8), kernel3) > 0) & free
-        return out
-
     values = [int(v) for v in np.unique(labels) if v != UNCLASSIFIED]
-    dilated = {v: geo_dilate(labels == v) for v in values}
+    dilated = {v: _geodesic_dilate(labels == v, free) for v in values}
     max_cells = int(params.max_door_measure_m / res)
     out = labels.copy()
     for i, a in enumerate(values):
@@ -515,13 +535,11 @@ def _clip_doorway_spills(
             contact = dilated[a] & dilated[b]
             if not contact.any():
                 continue
-            conn = connections.get((a, b))
-            if conn is not None:
-                cell = conn[1]  # 合并树山口 cell
-            else:
-                contact_dist = np.where(contact, dist, -np.inf)
-                cell = tuple(int(v) for v in np.unravel_index(
-                    contact_dist.argmax(), dist.shape))
+            # 合并树山口给出可穿过墙体的最窄切割方向；接触带只在
+            # _find_doorways 中用于拓扑记录。若没有连接记录则退化到接触带。
+            connection = connections.get((a, b))
+            cell = (connection[1] if connection is not None
+                    else _contact_saddle_cell(contact, dist))
             line = _shortest_cut_line(free, cell, max_cells)
             if line is None:
                 continue
