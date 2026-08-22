@@ -9,13 +9,21 @@
    "到该 cell 的最宽通路"所在的种子。只在自由空间内传播——墙不可穿越，
    因此区域不会溢出到墙另一侧（曾用 `cv2.watershed` 在全图淹没导致越墙）。
 4. 小区域合并（`_merge_small_regions`）：小于 ``min_region_area`` 的区域
-   并入共享边界最长的近邻；无近邻则标为未分类。
+   并入**连接最宽**（合并树山口最高）的近邻；山口并列时退化为共享边界
+   最长者；无近邻则标为未分类。
 5. **鞍部合并**（`_merge_by_saddle`）：相邻区域的鞍部（共享边界上距离变换
    的最大值 = 两区域间最宽通道的半宽）不低于 ``saddle_merge_ratio`` ×
    较小峰高时合并——两区域间存在足够宽的通道即同一片开阔空间；
    真门洞的鞍部显著低于两侧峰高，不会被误并。传递闭包用并查集。
-6. 脊线标记（`_mark_ridges`）：与不同 label 相邻的 cell 标为未分类
+6. **门口溢出裁剪**（`_clip_doorway_spills`）：maximin 会把门两侧 dist 低于
+   门鞍的 cell 分给对门区域形成溢出带；对每对相邻区域在合并树山口 cell
+   处生成切割线，暂时阻断后把落在对方连通体的 cell 重归对方，
+   区域边界强制对齐门洞切割线。
+7. 脊线标记（`_mark_ridges`）：与不同 label 相邻的 cell 标为未分类
    （watershed 不直接产脊线，接触带两侧各一层 cell 构成未分类边界）。
+8. **门口记录**（`_find_doorways`）：对每对相邻区域（测地膨胀接触带判定）
+   记录 `Doorway`（山口 center、clearance、width ≈ 2×clearance、ratio、
+   likely_door），构成区域拓扑邻接。
 
 未分类 cell（label 0）由 ``unclassified_free_mask`` 显式标出；距离值低于
 ``min_peak_height_m`` 的局部高地（过窄地带）不会产生种子，也留在未分类。

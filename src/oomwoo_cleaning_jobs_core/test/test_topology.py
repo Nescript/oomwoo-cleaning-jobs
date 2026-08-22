@@ -1,7 +1,8 @@
 """门口记录与拓扑（混合路线）测试。
 
 区域生成仍是 maximin 淹没 + 合并树；门口记录由合并树山口给出，
-包含 center（山口 cell）、width_m（实测门宽）、clearance_m（山口高度）。
+包含 center（山口 cell）、width_m（≈ 2×clearance 的近似门宽，非实测）、
+clearance_m（山口高度）。
 """
 
 from fixtures import (

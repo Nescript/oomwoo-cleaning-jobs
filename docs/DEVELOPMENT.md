@@ -77,7 +77,9 @@ trinary 加载：`occ = 1 - color/255`（negate=0）；`occ >= occupied_thresh` 
 - 形态学 closing 预处理对薄墙有害（腐蚀碎裂墙网），仅适合真实噪声地图。
 - 门口/拓扑作为一等公民是该方案的真实价值（阶段二 Segment 排序与导航需要）；后续可考虑混合：watershed 出区域 + 合并树山口作为门口记录。
 
-**混合路线已实现**（segmentation.py）：区域生成保持 maximin 淹没 + 合并树；`SegmentationResult.doorways` 输出门口记录（`Doorway`：相邻区域对、山口 center、clearance、width ≈ 2×clearance、ratio、likely_door），`adjacent_labels()` 给出拓扑邻接。实现要点：相邻对用**测地膨胀接触带**（普通膨胀会穿墙、会多跨脊线）判定；墙角对角相邻按 clearance 下限滤除；同一对区域多扇门只记录山口最高的一扇。渲染叠加品红门口标记，CLI 打印拓扑边。测试 `test_topology.py`（41 个 pytest 总计）。
+**混合路线已实现**（segmentation.py）：区域生成保持 maximin 淹没 + 合并树；`SegmentationResult.doorways` 输出门口记录（`Doorway`：相邻区域对、山口 center、clearance、width ≈ 2×clearance、ratio、likely_door），`adjacent_labels()` 给出拓扑邻接。实现要点：相邻对用**测地膨胀接触带**（普通膨胀会穿墙、会多跨脊线）判定；墙角对角相邻按 clearance 下限滤除；同一对区域多扇门只记录山口最高的一扇。渲染叠加品红门口标记，CLI 打印拓扑边。测试 `test_topology.py`（54 个 pytest 总计）。
+
+已知风险（2026-08-22 双轴评审记录，未修改）：`_clip_doorway_spills` 以合并树山口 cell 作切割中心，而 `_find_doorways` 已弃用合并树（「先开的门吸收了区域」）；对 `direct=False` 的传递连接相邻对，山口 cell 可能落在第三方区域边界而非该对门洞，导致切割线错位。现有分离校验 `continue` 兑底。待补针对「传递连接相邻对」的回归测试后再评估是否改用测地接触带定位切割中心。
 
 演示图：`docs/demo/`（主方案分割+门口标记）与 `docs/demo/doorway/`（门口切割方案三联图）。
 
