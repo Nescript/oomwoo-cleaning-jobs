@@ -90,6 +90,31 @@ def test_door_opening_not_saddle_merged():
     assert len(result.regions) == 2
 
 
+def test_doorway_clip_eliminates_spill():
+    """门口切割后，区域不得越过门平面（宽门 0.9 m 也不溢出）。
+
+    maximin 淹没本身会把门两侧 dist 低于门鞍的 cell 分给对门区域；
+    `_clip_doorway_spills` 把边界强制对齐到门洞切割线。"""
+    # 双房间：内墙 col 30，门 rows 35-44
+    source = make_two_rooms_map()
+    result = segment(source)
+    left = result.labels[40, 15]
+    right = result.labels[40, 50]
+    assert left != right and left != UNCLASSIFIED and right != UNCLASSIFIED
+    # 允许 1 cell 的边界带（脊线未分类），col 33 以右不得有左房间 cell
+    assert (result.labels[:, 33:] == left).sum() == 0
+    assert (result.labels[:, :28] == right).sum() == 0
+
+    # 宽门 0.9 m：内墙 col 32
+    wide = make_open_plan_map(opening_cells=18)
+    result = segment(wide)
+    assert len(result.regions) == 2
+    left = result.labels[17, 16]
+    right = result.labels[17, 48]
+    assert (result.labels[:, 35:] == left).sum() == 0
+    assert (result.labels[:, :30] == right).sum() == 0
+
+
 def test_open_room_degenerates_to_single_low_confidence_candidate():
     """开间只有一个距离峰：整体作为单一低置信候选。"""
     result = segment(make_open_room_map())

@@ -63,6 +63,8 @@ class SegmentationParams:
     #: 门口记录的 likely_door 判定门宽范围（米）
     min_door_width_m: float = 0.30
     max_door_width_m: float = 1.30
+    #: 门口切割线采样时自由走向的最大延伸（米）
+    max_door_measure_m: float = 1.50
 
 
 @dataclass(frozen=True)
@@ -163,6 +165,7 @@ def segment(source_map: SourceMap, params: SegmentationParams | None = None) -> 
 
     labels = _merge_small_regions(labels, dist, free, min_cells, low_conf)
     labels = _merge_by_saddle(labels, dist, free, params.saddle_merge_ratio, low_conf)
+    labels = _clip_doorway_spills(labels, dist, free, params, res)
     labels = _mark_ridges(labels)
     doorways = _find_doorways(labels, dist, free, params, res)
 
@@ -424,6 +427,131 @@ def _find_doorways(
                 likely_door=params.min_door_width_m <= width_m <= params.max_door_width_m,
             ))
     return doorways
+
+
+def _free_run(
+    free: np.ndarray,
+    center: tuple[int, int],
+    direction: tuple[float, float],
+    max_cells: int,
+) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+    """从 center 沿 direction 正负两方向走，收集 free cell。
+
+    返回 (line, ends)：ends 为两側行进终止处的第一个非 free cell。"""
+    h, w = free.shape
+    line: list[tuple[int, int]] = []
+    ends: list[tuple[int, int]] = []
+    for sign in (1.0, -1.0):
+        r, c = float(center[0]), float(center[1])
+        for _ in range(max_cells):
+            r += sign * direction[0]
+            c += sign * direction[1]
+            ri, ci = int(round(r)), int(round(c))
+            if not (0 <= ri < h and 0 <= ci < w):
+                break
+            if not free[ri, ci]:
+                ends.append((ri, ci))
+                break
+            if (ri, ci) not in line:
+                line.append((ri, ci))
+    return line, ends
+
+
+def _shortest_cut_line(
+    free: np.ndarray,
+    center: tuple[int, int],
+    max_cells: int,
+) -> list[tuple[int, int]] | None:
+    """过 center 的方向采样最短自由走向（两端都须止于非 free cell）。"""
+    directions = [(float(np.sin(t)), float(np.cos(t)))
+                  for t in np.linspace(0, np.pi, 16, endpoint=False)]
+    best: list[tuple[int, int]] | None = None
+    for direction in directions:
+        line, ends = _free_run(free, center, direction, max_cells)
+        if len(ends) == 2 and (best is None or len(line) < len(best)):
+            best = line
+    return best
+
+
+def _clip_doorway_spills(
+    labels: np.ndarray,
+    dist: np.ndarray,
+    free: np.ndarray,
+    params: SegmentationParams,
+    res: float,
+) -> np.ndarray:
+    """把门口边界强制对齐到门洞切割线。
+
+    maximin 淹没按"最宽通路"分配 cell：门两侧 dist 低于门鞍的 cell 会被
+    分配给对门区域（宽门时形成可见的溢出带）。这里对每个空间相邻的
+    区域对：在合并树山口 cell（首次连通 cell，位于门洞通道内）处方向
+    采样取两端止于非 free 的最短走向作为切割线，3x3 加厚后暂时阻断，
+    把落在对方连通体里的本区域 cell 重归对方；切割带 cell 最后按邻域
+    多数表决归边。切割未能把 A∪B 分成两个分含各自峰的连通体时保持原样。
+    """
+    connections = _connection_values(labels, dist, free)
+    kernel3 = np.ones((3, 3), dtype=np.uint8)
+
+    def geo_dilate(mask: np.ndarray, steps: int = 2) -> np.ndarray:
+        out = mask & free
+        for _ in range(steps):
+            out = (cv2.dilate(out.astype(np.uint8), kernel3) > 0) & free
+        return out
+
+    values = [int(v) for v in np.unique(labels) if v != UNCLASSIFIED]
+    dilated = {v: geo_dilate(labels == v) for v in values}
+    max_cells = int(params.max_door_measure_m / res)
+    out = labels.copy()
+    for i, a in enumerate(values):
+        for b in values[i + 1:]:
+            contact = dilated[a] & dilated[b]
+            if not contact.any():
+                continue
+            conn = connections.get((a, b))
+            if conn is not None:
+                cell = conn[1]  # 合并树山口 cell
+            else:
+                contact_dist = np.where(contact, dist, -np.inf)
+                cell = tuple(int(v) for v in np.unravel_index(
+                    contact_dist.argmax(), dist.shape))
+            line = _shortest_cut_line(free, cell, max_cells)
+            if line is None:
+                continue
+            cut = np.zeros(free.shape, dtype=bool)
+            for r, c in line:
+                r0, r1 = max(0, r - 1), min(free.shape[0], r + 2)
+                c0, c1 = max(0, c - 1), min(free.shape[1], c + 2)
+                cut[r0:r1, c0:c1] = True
+            zone = ((out == a) | (out == b)) & ~cut
+            comp, _n = ndimage.label(zone, structure=np.ones((3, 3)))
+            peak_a = np.unravel_index(
+                np.where(out == a, dist, -np.inf).argmax(), dist.shape)
+            peak_b = np.unravel_index(
+                np.where(out == b, dist, -np.inf).argmax(), dist.shape)
+            comp_a, comp_b = comp[peak_a], comp[peak_b]
+            if comp_a == 0 or comp_b == 0 or comp_a == comp_b:
+                continue  # 切割未能分离两区域，保持原样
+            out[(labels == a) & (comp == comp_b)] = b
+            out[(labels == b) & (comp == comp_a)] = a
+            # 切割带 cell（被 cut 覆盖、不在任何连通体内）按邻域多数归边
+            band = ((out == a) | (out == b)) & cut
+            for _ in range(3):
+                if not band.any():
+                    break
+                assigned = False
+                for r, c in np.argwhere(band):
+                    r0, r1 = max(0, r - 1), min(out.shape[0], r + 2)
+                    c0, c1 = max(0, c - 1), min(out.shape[1], c + 2)
+                    neighbors = out[r0:r1, c0:c1]
+                    votes_a = int((neighbors == a).sum())
+                    votes_b = int((neighbors == b).sum())
+                    if votes_a != votes_b:
+                        out[r, c] = a if votes_a > votes_b else b
+                        band[r, c] = False
+                        assigned = True
+                if not assigned:
+                    break
+    return out
 
 
 def _mark_ridges(labels: np.ndarray) -> np.ndarray:
