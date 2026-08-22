@@ -59,6 +59,13 @@ def render_segmentation(
         a = alpha * (0.5 if region.low_confidence else 1.0)
         img[mask] = (1 - a) * img[mask] + a * color
     img[result.unclassified_free_mask] = COLOR_UNCLASSIFIED
+    # 门口标记：likely_door 品红实心块，其余灰色空心块（cells 行序）
+    for doorway in result.doorways:
+        r, c = doorway.center
+        color = (255, 0, 255) if doorway.likely_door else (128, 128, 128)
+        r0, r1 = max(0, r - 1), min(img.shape[0], r + 2)
+        c0, c1 = max(0, c - 1), min(img.shape[1], c + 2)
+        img[r0:r1, c0:c1] = color
     out = _to_image_orientation(img.astype(np.uint8))
     if scale != 1:
         out = cv2.resize(

@@ -81,6 +81,13 @@ def main(argv=None) -> int:
         unclassified = int(result.unclassified_free_mask.sum())
         print(f'未分类   : {unclassified} cells '
               f'({unclassified / max(free, 1):.1%} of free)')
+        print(f'门口     : {len(result.doorways)} 条拓扑边')
+        for doorway in result.doorways:
+            a, b = doorway.regions
+            mark = '门' if doorway.likely_door else '窄缝'
+            print(f'  #{a} <-> #{b}: 宽 {doorway.width_m:.2f} m, '
+                  f'clearance {doorway.clearance_m:.2f} m, '
+                  f'ratio {doorway.ratio:.2f} [{mark}]')
         seg_out = (Path(args.seg_out) if args.seg_out
                    else yaml_path.with_suffix('.segments.png'))
         assert cv2.imwrite(

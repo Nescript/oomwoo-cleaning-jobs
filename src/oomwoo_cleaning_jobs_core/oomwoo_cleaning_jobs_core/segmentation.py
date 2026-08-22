@@ -26,7 +26,7 @@
 from __future__ import annotations
 
 import heapq
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
@@ -60,6 +60,9 @@ class SegmentationParams:
     #: 鞍部合并阈值：鞍部 >= ratio × 较小峰高时合并相邻区域。
     #: 1.0 以上等价于禁用；真门洞比值通常 < 0.5，同片开阔地的伪分割 ≥ 1.0。
     saddle_merge_ratio: float = 0.8
+    #: 门口记录的 likely_door 判定门宽范围（米）
+    min_door_width_m: float = 0.30
+    max_door_width_m: float = 1.30
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,24 @@ class CandidateRegion:
     low_confidence: bool
 
 
+@dataclass(frozen=True)
+class Doorway:
+    """两个 Region 间的门口记录（拓扑边）。
+
+    center 是两区域接触带中 dist 最大的 cell（局部山口）；clearance_m 是
+    山口高度（瓶颈半宽）；width_m ≈ 2 × clearance（经典近似）；
+    ratio = clearance / min(两侧峰高)（越大越像同一片开阔空间）；
+    likely_door = width_m 落在门宽范围内。
+    """
+
+    regions: tuple[int, int]
+    center: tuple[int, int]  # (row, col)，cells 行序
+    width_m: float
+    clearance_m: float
+    ratio: float
+    likely_door: bool
+
+
 @dataclass
 class SegmentationResult:
     """分割结果。labels 与 SourceMap.cells 同行序（row 0 = 最底行）。"""
@@ -80,6 +101,7 @@ class SegmentationResult:
     regions: list[CandidateRegion]
     free_mask: np.ndarray
     params: SegmentationParams
+    doorways: list[Doorway] = field(default_factory=list)
 
     @property
     def unclassified_free_mask(self) -> np.ndarray:
@@ -88,6 +110,17 @@ class SegmentationResult:
 
     def mask_of(self, label: int) -> np.ndarray:
         return self.labels == label
+
+    def adjacent_labels(self, label: int) -> set[int]:
+        """拓扑邻接：通过门口与该 Region 相连的其他 Region。"""
+        out: set[int] = set()
+        for doorway in self.doorways:
+            a, b = doorway.regions
+            if a == label:
+                out.add(b)
+            elif b == label:
+                out.add(a)
+        return out
 
 
 def segment(source_map: SourceMap, params: SegmentationParams | None = None) -> SegmentationResult:
@@ -131,6 +164,7 @@ def segment(source_map: SourceMap, params: SegmentationParams | None = None) -> 
     labels = _merge_small_regions(labels, dist, free, min_cells, low_conf)
     labels = _merge_by_saddle(labels, dist, free, params.saddle_merge_ratio, low_conf)
     labels = _mark_ridges(labels)
+    doorways = _find_doorways(labels, dist, free, params, res)
 
     regions = []
     for label in sorted(int(v) for v in np.unique(labels) if v != UNCLASSIFIED):
@@ -141,7 +175,8 @@ def segment(source_map: SourceMap, params: SegmentationParams | None = None) -> 
             area_m2=cell_count * res * res,
             low_confidence=label in low_conf,
         ))
-    return SegmentationResult(labels=labels, regions=regions, free_mask=free, params=params)
+    return SegmentationResult(labels=labels, regions=regions, free_mask=free,
+                              params=params, doorways=doorways)
 
 
 def _maximin_watershed(dist: np.ndarray, markers: np.ndarray, free: np.ndarray) -> np.ndarray:
@@ -205,7 +240,7 @@ def _merge_small_regions(
                 continue
             candidates = [
                 (saddle, b if a == value else a)
-                for (a, b), saddle in saddles.items()
+                for (a, b), (saddle, _cell, _direct) in saddles.items()
                 if a == value or b == value
             ]
             if not candidates:
@@ -227,20 +262,26 @@ def _merge_small_regions(
     return labels
 
 
-def _connection_values(labels: np.ndarray, dist: np.ndarray, free: np.ndarray) -> dict[tuple[int, int], float]:
-    """区域对 -> 真实山口高度：两区域在 ``dist >= W`` 的超水平集内连通的**最大** W。
+def _connection_values(
+    labels: np.ndarray,
+    dist: np.ndarray,
+    free: np.ndarray,
+) -> dict[tuple[int, int], tuple[float, tuple[int, int], bool]]:
+    """区域对 -> (山口高度 W, 山口 cell, direct)：两区域在 ``dist >= W`` 的
+    超水平集内连通的**最大** W，以及首次连通处的 cell（瓶颈点）。
 
     等价于分水岭合并树（merge tree / persistence）：按 dist 降序扫描
     free cell 并查集合并，首次把两个不同 label 的集合连通时的 dist
-    即两区域间最宽通路的瓶颈。与最终分界线落在哪里无关——接触式鞍部
-    （共享边界上的 dist）会随分界线摆动而高估/低估，已弃用。
-    """
+    即两区域间最宽通路的瓶颈。与最终分界线落在哪里无关。
+
+    direct=False 表示该连接途经第三方区域（合并集合已含其他 label），
+    是传递连接而非直接相邻——合并与门口记录只应使用 direct=True。"""
     h, w = dist.shape
     cells = np.argwhere(free)
     order = np.argsort(-dist[free], kind='stable')
     parent: dict[int, int] = {}
     labelsets: dict[int, set[int]] = {}
-    connections: dict[tuple[int, int], float] = {}
+    connections: dict[tuple[int, int], tuple[float, tuple[int, int], bool]] = {}
 
     def find(x: int) -> int:
         root = x
@@ -265,12 +306,13 @@ def _connection_values(labels: np.ndarray, dist: np.ndarray, free: np.ndarray) -
             ra, rb = find(x), find(y)
             if ra == rb:
                 continue
+            direct = len(labelsets[ra]) == 1 and len(labelsets[rb]) == 1
             for la in labelsets[ra]:
                 for lb in labelsets[rb]:
                     if la != lb:
                         key = (min(la, lb), max(la, lb))
                         if key not in connections:
-                            connections[key] = float(dist[r, c])
+                            connections[key] = (float(dist[r, c]), (r, c), direct)
             if len(labelsets[ra]) < len(labelsets[rb]):
                 ra, rb = rb, ra
             parent[rb] = ra
@@ -305,7 +347,7 @@ def _merge_by_saddle(
             v = parent[v]
         return v
 
-    for (a, b), saddle in _connection_values(labels, dist, free).items():
+    for (a, b), (saddle, _cell, _direct) in _connection_values(labels, dist, free).items():
         if saddle >= ratio * min(peaks[a], peaks[b]):
             parent[find(a)] = find(b)
 
@@ -323,6 +365,65 @@ def _merge_by_saddle(
         if target != v:
             out[labels == v] = target
     return out
+
+
+def _find_doorways(
+    labels: np.ndarray,
+    dist: np.ndarray,
+    free: np.ndarray,
+    params: SegmentationParams,
+    res: float,
+) -> list[Doorway]:
+    """为最终 Region 拓扑生成门口记录。
+
+    门口区域对 = 最终标记中空间相邻（接触带 <=2 cell 的脊线/未分类）的
+    区域对。山口 center 与 clearance 取两区域公共接触带中 dist 最大的
+    cell（局部山口）。门宽 ≈ 2 × clearance（瓶颈半宽经典近似）。
+
+    注意：不用合并树的 direct 标记判定相邻——同一层级先连通的区域会
+    把后连通的实际相邻对标记为传递连接（先开的门"吸收"了区域）。
+    同一对区域间若有多扇门，只记录山口最高的一扇。
+    """
+    kernel3 = np.ones((3, 3), dtype=np.uint8)
+
+    def geo_dilate(mask: np.ndarray, steps: int = 2) -> np.ndarray:
+        """测地膨胀：只在 free 内扩张，不穿墙。"""
+        out = mask & free
+        for _ in range(steps):
+            out = (cv2.dilate(out.astype(np.uint8), kernel3) > 0) & free
+        return out
+
+    values = [int(v) for v in np.unique(labels) if v != UNCLASSIFIED]
+    dilated: dict[int, np.ndarray] = {
+        v: geo_dilate(labels == v) for v in values
+    }
+    peaks = {v: float(dist[labels == v].max()) for v in values}
+    doorways: list[Doorway] = []
+    for i, a in enumerate(values):
+        for b in values[i + 1:]:
+            contact = dilated[a] & dilated[b]
+            if not contact.any():
+                continue
+            # 局部山口 = 接触带中 dist 最大的 cell
+            contact_dist = np.where(contact, dist, -np.inf)
+            center = tuple(
+                int(v) for v in np.unravel_index(contact_dist.argmax(), dist.shape))
+            clearance = float(dist[center])
+            # 墙角对角相邻（十字墙交叉处）的接触带 clearance 极低，滤除
+            if clearance < params.min_door_width_m / 2:
+                continue
+            # 门宽 ≈ 2 × 山口 clearance（瓶颈中点到两侧障碍距离之和的
+            # 经典近似；实测方向采样对接触带 1-2 cell 的偏移过于敏感）
+            width_m = 2.0 * clearance
+            doorways.append(Doorway(
+                regions=(a, b),
+                center=center,
+                width_m=width_m,
+                clearance_m=clearance,
+                ratio=clearance / max(min(peaks[a], peaks[b]), 1e-6),
+                likely_door=params.min_door_width_m <= width_m <= params.max_door_width_m,
+            ))
+    return doorways
 
 
 def _mark_ridges(labels: np.ndarray) -> np.ndarray:
