@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>oomwoo_cleaning_jobs_core</name>
+  <version>0.1.0</version>
+  <description>
+    oomwoo_cleaning_jobs 的纯 Python 核心库：地图加载与 identity、自动分割、
+    Region 掩码编辑、校验与持久化。零 ROS 依赖，可无头 pytest；
+    ROS 2 仅作为适配层（见 docs/DEVELOPMENT.md）。
+  </description>
+  <maintainer email="dev@example.com">oomwoo</maintainer>
+  <license>Apache 2.0</license>
+
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
