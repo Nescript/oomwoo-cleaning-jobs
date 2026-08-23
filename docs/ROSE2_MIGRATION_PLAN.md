@@ -57,8 +57,8 @@ ROS 1 nodes, services, RViz integration, and pickled Python-object messages are 
 
 - Joint `colcon build` of all five affected packages: passed.
 - Full `colcon test` and `colcon test-result --verbose`: passed.
-- Full source pytest with ROSE2 dependencies: 83 passed, including Qt worker execution, stale-map-result rejection, strict shared-contract validation, post-extraction cancellation, and the three former docs-map crash regressions.
-- ROSE2 provider tests with full dependencies: 8 passed, including the real pinned upstream pipeline and cropped/real-map compatibility cases.
+- Full source pytest with ROSE2 dependencies: 85 passed, including Qt worker execution, stale-map-result rejection, strict shared-contract validation, post-extraction cancellation, and five exact docs-map room/unassigned regressions.
+- ROSE2 provider tests with full dependencies: 10 passed, including the real pinned upstream pipeline, cropped/real-map compatibility, frame-line deduplication, and furniture-line filtering cases.
 - End-to-end ROS 2 server/client test: cancellation returned Action `CANCELED` plus contract `STATUS_CANCELLED`; a subsequent goal succeeded and produced base, final segmentation, cleaned-map, extended-line, and label-overlay PNGs.
 - Legacy algorithm symbol scan: no runtime implementation or fallback remained.
 - `git diff --check`: passed.

@@ -32,18 +32,24 @@ def _source_from_render(relative_path: str, embedded_scale: int) -> SourceMap:
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize(('relative_path', 'embedded_scale'), (
-    ('docs/demo/corridor4.render.png', 3),
-    ('docs/demo/grid6_furniture.render.png', 3),
-    ('docs/demo/living_room.render.png', 2),
-))
-def test_docs_map_produces_a_valid_result(relative_path, embedded_scale):
+@pytest.mark.parametrize(
+    ('relative_path', 'embedded_scale', 'expected_rooms', 'expected_unassigned'), (
+        ('docs/demo/corridor4.render.png', 3, 5, 0),
+        ('docs/demo/grid6_furniture.render.png', 3, 5, 0),
+        ('docs/demo/living_room.render.png', 2, 2, 0),
+        ('docs/demo/room3.png', 1, 5, 0),
+        ('docs/demo/two_rooms.render.png', 1, 2, 0),
+    ))
+def test_docs_map_produces_a_valid_result(
+    relative_path, embedded_scale, expected_rooms, expected_unassigned,
+):
     source = _source_from_render(relative_path, embedded_scale)
 
     result = Rose2Segmenter().segment(source, include_diagnostics=True)
 
     validate_result(result, source)
-    assert result.regions
+    assert len(result.regions) == expected_rooms
+    assert int(result.unassigned_cleanable_mask.sum()) == expected_unassigned
     assert not np.any(result.labels[~source.free_mask()])
     assert {item.stage for item in result.diagnostics} == {
         'cleaned_map', 'extended_lines', 'labels_overlay'}

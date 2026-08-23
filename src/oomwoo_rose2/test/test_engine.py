@@ -39,7 +39,9 @@ def make_map():
 
 
 def test_launch_profile_parameter_validation():
-    Rose2Config().validate()
+    config = Rose2Config()
+    config.validate()
+    assert config.lines_threshold == pytest.approx(0.22)
     with pytest.raises(SegmentationError, match='between 0 and 1'):
         Rose2Config(filter_level=1.1).validate()
 

@@ -18,4 +18,4 @@ It intentionally replaces ROS 1 wrappers and pickled message payloads with the t
 ros2 launch oomwoo_rose2 rose2.launch.py
 ```
 
-The action is available at `/room_segmentation/segment`. Parameters are in `config/rose2.yaml` and match the pinned upstream `ROSE.launch` profile. `rooms_voronoi` enables the optional upstream Voronoi refinement and its additional `networkx`, `skan`, and plotting dependencies.
+The action is available at `/room_segmentation/segment`. Parameters are in `config/rose2.yaml` and are based on the pinned upstream `ROSE.launch` profile. The documented OOMWOO profile raises `lines_threshold` to `0.22` to reject low-support furniture-derived full-map lines; deployments can override it as a node parameter. `rooms_voronoi` enables the optional upstream Voronoi refinement and its additional `networkx`, `skan`, and plotting dependencies.

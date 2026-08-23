@@ -67,6 +67,24 @@ def create_extended_segments(x_min, x_max, y_min, y_max, extended_lines):
 					point2 = np.array([x_for_y_max, y_max])
 			seg = ExtendedSegment(point1, point2, line.angular_cluster, line.spatial_cluster)
 			extended_seg.append(seg)
+
+	# Synthetic frame segments are appended below. If Hough already found an
+	# exactly coincident frame line, keeping both gives create_cells() two
+	# indistinguishable edges; its traversal can then repeat two borders and
+	# omit the opposite pair, producing the lower-left triangular cell.
+	def on_frame(seg):
+		vertical = np.isclose(seg.x1, seg.x2, atol=1e-6)
+		horizontal = np.isclose(seg.y1, seg.y2, atol=1e-6)
+		return (
+			vertical and (
+				np.isclose(seg.x1, x_min, atol=1e-6)
+				or np.isclose(seg.x1, x_max, atol=1e-6))
+			or horizontal and (
+				np.isclose(seg.y1, y_min, atol=1e-6)
+				or np.isclose(seg.y1, y_max, atol=1e-6))
+		)
+
+	extended_seg = [seg for seg in extended_seg if not on_frame(seg)]
 	point1 = np.array([x_min, y_min])
 	point2 = np.array([x_min, y_max])
 	point3 = np.array([x_max, y_max])

@@ -20,7 +20,7 @@ from oomwoo_segmentation.validation import canonicalize_labels, effective_cleana
 UPSTREAM_REPOSITORY = 'https://github.com/aislabunimi/ROSE2'
 UPSTREAM_COMMIT = '3a010b9e6bb2477de3b5b46208ebfccd71dfafbf'
 IMPLEMENTATION_ID = 'rose2'
-IMPLEMENTATION_VERSION = f'upstream-{UPSTREAM_COMMIT[:12]}+oomwoo.2'
+IMPLEMENTATION_VERSION = f'upstream-{UPSTREAM_COMMIT[:12]}+oomwoo.3'
 
 _LOG = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class Rose2Config:
     fft_peak_height: float = 0.2
     fft_band_width: int = 50
     spatial_clustering_line_segments_threshold: float = 5.0
-    lines_threshold: float = 0.0
+    lines_threshold: float = 0.22
     lines_distance_px: float = 20.0
     edges_threshold: float = 0.0
     rooms_voronoi: bool = False

@@ -5,7 +5,7 @@ oomwoo_rose2:
     fft_peak_height: 0.2
     fft_band_width: 50
     spatial_clustering_line_segments_threshold: 5.0
-    lines_threshold: 0.0
+    lines_threshold: 0.22
     lines_distance_px: 20.0
     edges_threshold: 0.0
     rooms_voronoi: false

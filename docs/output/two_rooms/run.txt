@@ -4,7 +4,7 @@ origin   : (0.0, 0.0, 0.0)
 identity : a92dc8550531f629eb0f2d9ac66ee9ed586f54fba58fc0b12e07669b6a05a2fb
 cells    : free 4490 (56.1%), occupied 334, unknown 3176
 base map : docs/output/two_rooms/source.render.png
-implementation : rose2 upstream-3a010b9e6bb2+oomwoo.2
+implementation : rose2 upstream-3a010b9e6bb2+oomwoo.3
 rooms : 2
   #1: 4.40 m^2 (1760 cells)
   #2: 6.83 m^2 (2730 cells)

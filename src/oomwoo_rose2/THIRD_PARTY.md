@@ -18,6 +18,8 @@ The original license is installed as `LICENSE`.
 - Fixed two vertical-line branches that read `Y1` before initialization because the `b == 0` guard was evaluated second.
 - Replaced the brittle hard-coded second non-free contour with the largest connected free-space contour; this handles cropped maps and avoids selecting furniture as the layout boundary.
 - Ignore degenerate cells with fewer than three distinct vertices before constructing Shapely polygons, matching the intended empty/outside-cell behavior on modern Shapely.
+- Deduplicate detected lines that exactly coincide with the four synthetic frame lines before edge/cell construction; duplicate borders previously produced a triangular lower-left cell with missing opposite edges.
+- Raise the default retained-line support floor from upstream `0.0` to `0.22`; this rejects the demonstrated low-support full-map line generated from furniture while preserving the regression fixtures' structural walls. The value remains a provider parameter.
 - Added `oomwoo_rose2.engine` to adapt `SourceMap`/cleanable masks to the original two-stage ROSE + ROSE2 pipeline and canonical label grids.
 - Replaced ROS 1 publishers, services, pickled custom messages, and launch files with the typed `oomwoo_segmentation_interfaces/SegmentRooms` ROS 2 action.
 - Added deterministic label canonicalization and in-memory diagnostics.
