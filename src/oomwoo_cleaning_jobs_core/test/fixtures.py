@@ -18,7 +18,9 @@ import cv2
 import numpy as np
 import yaml
 
-from oomwoo_cleaning_jobs_core import FREE, OCCUPIED, UNKNOWN, SourceMap
+from oomwoo_segmentation.models import SegmentationResult
+from oomwoo_segmentation.source_map import FREE, OCCUPIED, UNKNOWN, SourceMap
+from oomwoo_segmentation.validation import canonicalize_labels
 
 #: Pixel conventions matching nav2 map_saver
 PIXEL_OCCUPIED = 0
@@ -37,6 +39,35 @@ INNER_WALL_COL = 30
 DOOR_ROWS = (35, 44)
 UNKNOWN_PATCH_ROWS = (50, 59)
 UNKNOWN_PATCH_COLS = (50, 59)
+
+
+def fake_segmentation(source: SourceMap, cleanable_mask=None) -> SegmentationResult:
+    """Deterministic test adapter; production tests must use a real provider.
+
+    It splits on the strongest interior vertical wall when one exists. This
+    keeps RegionSet/UI tests focused on editing semantics rather than ROSE2.
+    """
+    cleanable = source.free_mask()
+    if cleanable_mask is not None:
+        cleanable &= np.asarray(cleanable_mask, dtype=bool)
+    labels = np.zeros(source.cells.shape, dtype=np.int32)
+    rows, cols = np.nonzero(cleanable)
+    if not rows.size:
+        canonical, regions, cleanable = canonicalize_labels(labels, source, cleanable)
+    else:
+        c0, c1 = int(cols.min()), int(cols.max())
+        r0, r1 = int(rows.min()), int(rows.max())
+        scores = source.occupied_mask()[r0:r1 + 1, c0:c1 + 1].sum(axis=0)
+        wall_offset = int(np.argmax(scores))
+        wall_col = c0 + wall_offset
+        if scores[wall_offset] >= max(3, (r1 - r0 + 1) // 3):
+            labels[cleanable & (np.indices(labels.shape)[1] < wall_col)] = 1
+            labels[cleanable & (np.indices(labels.shape)[1] > wall_col)] = 2
+        else:
+            labels[cleanable] = 1
+        canonical, regions, cleanable = canonicalize_labels(labels, source, cleanable)
+    return SegmentationResult(
+        canonical, regions, cleanable, 'test-fake', '1')
 
 
 def make_rooms_map() -> SourceMap:

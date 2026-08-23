@@ -10,7 +10,8 @@ from PyQt5.QtGui import QMouseEvent
 from PyQt5.QtWidgets import QApplication, QInputDialog
 from PyQt5.QtCore import QEvent
 
-from oomwoo_cleaning_jobs_core.source_map import FREE, OCCUPIED, UNKNOWN, SourceMap
+from fake_segmentation import fake_segmentation
+from oomwoo_segmentation.source_map import FREE, OCCUPIED, UNKNOWN, SourceMap
 from oomwoo_cleaning_jobs_ui.app import Window
 
 # Process-level singleton: a QApplication held by a local variable gets
@@ -33,6 +34,7 @@ def _two_room_source() -> SourceMap:
 
 def _window_with(source: SourceMap) -> Window:
     window = Window()
+    window.controller.segmenter = fake_segmentation
     window.controller.set_source(source)
     window.refresh()
     return window

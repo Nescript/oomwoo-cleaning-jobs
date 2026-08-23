@@ -1,18 +1,20 @@
-"""oomwoo_cleaning_jobs_core: pure Python core library (zero ROS dependencies).
+"""Domain logic for editable and persisted cleaning Region Sets.
 
-Scope and terminology: see docs/DEVELOPMENT.md in the repository.
+Room segmentation, map loading, and rendering live in ``oomwoo_segmentation``.
+The map symbols are re-exported here only for existing callers.
 """
 
-from .constraints import ConstraintSet, Keepout, VirtualWall
-from .map_io import load_map_file
-from .persistence import RegionSetStore, StoredRegionSet
-from .source_map import (
+from oomwoo_segmentation.map_io import load_map_file
+from oomwoo_segmentation.source_map import (
     DEFAULT_FREE_THRESH,
     FREE,
     OCCUPIED,
     UNKNOWN,
     SourceMap,
 )
+
+from .constraints import ConstraintSet, Keepout, VirtualWall
+from .persistence import RegionSetStore, StoredRegionSet
 
 __all__ = [
     'ConstraintSet',

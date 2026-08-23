@@ -5,17 +5,17 @@ import numpy as np
 import pytest
 import yaml
 
-from fixtures import make_two_rooms_map
+from fixtures import fake_segmentation, make_two_rooms_map
 
 from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout
 from oomwoo_cleaning_jobs_core.persistence import RegionSetStore
 from oomwoo_cleaning_jobs_core.regions import RegionSet
-from oomwoo_cleaning_jobs_core.segmentation import segment
 
 
 def _draft(source, constraints=ConstraintSet()):
     keepout = constraints.mask_for(source)
-    result = segment(source, cleanable_mask=source.free_mask() & ~keepout)
+    result = fake_segmentation(
+        source, cleanable_mask=source.free_mask() & ~keepout)
     return RegionSet.from_segmentation(
         result, resolution=source.resolution, origin=source.origin,
         base_cleanable=source.free_mask(), keepout_mask=keepout)

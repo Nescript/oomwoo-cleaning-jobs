@@ -28,7 +28,7 @@ import cv2
 import numpy as np
 from scipy import ndimage
 
-from .segmentation import SegmentationResult
+from oomwoo_segmentation.models import SegmentationResult
 
 #: labels value for "unassigned"
 UNASSIGNED = 0
@@ -90,7 +90,7 @@ class RegionSet:
         constraints are later removed; clipped-away Region cells are not
         resurrected automatically.
         """
-        cleanable = result.free_mask if cleanable is None else cleanable
+        cleanable = result.cleanable_mask if cleanable is None else cleanable
         names = {r.label: f'Region {r.label}' for r in result.regions}
         return cls(
             labels=result.labels.copy(),

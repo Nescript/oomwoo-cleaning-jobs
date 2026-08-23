@@ -5,13 +5,17 @@ import numpy as np
 from PyQt5.QtCore import Qt, QObject, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QApplication, QFileDialog, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QVBoxLayout, QWidget
-from oomwoo_cleaning_jobs_core.map_io import load_map_file
+from oomwoo_segmentation.map_io import load_map_file
 from .controller import EditorController
 from .ros_map_source import RosMapSource
 
 PALETTE=[(55,126,184),(228,26,28),(77,175,74),(152,78,163),(255,127,0)]
 class LiveMapBridge(QObject):
     received=pyqtSignal(object)
+
+class SegmentationBridge(QObject):
+    completed=pyqtSignal(object)
+    failed=pyqtSignal(str)
 
 class MapCanvas(QLabel):
     def __init__(self, window): super().__init__(); self.window=window; self.setMinimumSize(600,500); self.setAlignment(Qt.AlignCenter)
@@ -33,8 +37,9 @@ class MapCanvas(QLabel):
 
 class Window(QMainWindow):
     def __init__(self):
-        super().__init__(); self.controller=EditorController(); self.mode='paint'; self._first_point=None; self._pending_name=None; self._pending_wall_width=None; self._unnamed_candidates=set(); self._refreshing=False; self._executor=self._node=self._thread=None
+        super().__init__(); self.controller=EditorController(); self.mode='paint'; self._first_point=None; self._pending_name=None; self._pending_wall_width=None; self._unnamed_candidates=set(); self._refreshing=False; self._executor=self._node=self._thread=None; self._segmentation_thread=None
         self.bridge=LiveMapBridge(); self.bridge.received.connect(self.receive_live_map)
+        self.segmentation_bridge=SegmentationBridge(); self.segmentation_bridge.completed.connect(self._segmentation_completed); self.segmentation_bridge.failed.connect(self._segmentation_failed)
         self.setWindowTitle('OOMWOO Region Set Editor'); root=QWidget(); self.setCentralWidget(root); layout=QHBoxLayout(root); left=QVBoxLayout(); layout.addLayout(left); self.canvas=MapCanvas(self); layout.addWidget(self.canvas,1)
         for title,fn in [('Open Map File',self.open_file),('Start /map',self.toggle_live),('1. Auto Segment',self.generate),('2. Name Candidates One by One',self.name_candidates),('Save Draft',self.save),('Validate / Publish',self.publish)]:
             b=QPushButton(title); b.clicked.connect(fn); left.addWidget(b)
@@ -123,11 +128,22 @@ class Window(QMainWindow):
         self.refresh()
         return True
     def generate(self):
-        try:
-            self.controller.generate_candidates(); self.mode='paint'
-            self._unnamed_candidates={info.label for info in self.controller.regions.regions()}
-            self.refresh(); self.name_candidates()
-        except Exception as exc:self.error(str(exc))
+        if self.controller.source is None:
+            self.error('Open a map first'); return
+        if self._segmentation_thread and self._segmentation_thread.is_alive():
+            self.status.setText('ROSE2 segmentation is already running'); return
+        self.status.setText('Running ROSE2 room segmentation…')
+        self._segmentation_thread=threading.Thread(target=self._run_segmentation,daemon=True)
+        self._segmentation_thread.start()
+    def _run_segmentation(self):
+        try:self.segmentation_bridge.completed.emit(self.controller.generate_candidates())
+        except Exception as exc:self.segmentation_bridge.failed.emit(str(exc))
+    def _segmentation_completed(self,_result):
+        self._segmentation_thread=None; self.mode='paint'
+        self._unnamed_candidates={info.label for info in self.controller.regions.regions()}
+        self.refresh(); self.name_candidates()
+    def _segmentation_failed(self,message):
+        self._segmentation_thread=None; self.error(message)
     def toggle_advanced(self):
         visible=not self.advanced.isVisible(); self.advanced.setVisible(visible)
         self.advanced_toggle.setText('Hide Advanced Editing' if visible else 'Show Advanced Editing')

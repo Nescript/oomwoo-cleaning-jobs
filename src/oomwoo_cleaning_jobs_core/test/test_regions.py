@@ -6,15 +6,14 @@ import math
 import numpy as np
 import pytest
 
-from fixtures import make_two_rooms_map
+from fixtures import fake_segmentation, make_two_rooms_map
 
 from oomwoo_cleaning_jobs_core.regions import UNASSIGNED, RegionSet
-from oomwoo_cleaning_jobs_core.segmentation import segment
 
 
 def _make_region_set():
     source = make_two_rooms_map()
-    result = segment(source)
+    result = fake_segmentation(source)
     return source, RegionSet.from_segmentation(
         result, resolution=source.resolution, origin=source.origin)
 

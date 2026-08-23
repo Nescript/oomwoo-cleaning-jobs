@@ -10,6 +10,8 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>oomwoo_cleaning_jobs_core</exec_depend>
+  <exec_depend>oomwoo_segmentation</exec_depend>
+  <exec_depend>oomwoo_segmentation_interfaces</exec_depend>
   <test_depend>python3-pytest</test_depend>
   <export><build_type>ament_python</build_type></export>
 </package>

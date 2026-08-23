@@ -1,37 +1,68 @@
 """Host-neutral editor controller composed from core APIs."""
 from __future__ import annotations
+
+import threading
+
 import numpy as np
 from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout, VirtualWall
 from oomwoo_cleaning_jobs_core.persistence import RegionSetStore
 from oomwoo_cleaning_jobs_core.regions import RegionSet
-from oomwoo_cleaning_jobs_core.segmentation import segment
 from oomwoo_cleaning_jobs_core.validation import validate_region_set
+from oomwoo_segmentation.client import segment_once
 
 class EditorController:
-    def __init__(self, store=None):
+    def __init__(self, store=None, segmenter=None):
         self.store = store or RegionSetStore()
+        # Injected in tests; production uses the provider-neutral ROS 2 action.
+        self.segmenter = segmenter or segment_once
         self.source = None
         self.constraints = ConstraintSet()
         self.regions = None
+        self._state_lock = threading.RLock()
+        self._state_revision = 0
 
     def set_source(self, source):
-        self.source = source
-        loaded = self.store.load_draft(source)
-        if loaded:
-            self.regions, self.constraints = loaded.region_set, loaded.constraints
-            return 'Loaded draft for this map'
-        self.regions = None
-        self.constraints = ConstraintSet()
-        others = self.store.other_map_set_count(source)
-        return (f'No region set for the current map; {others} region set(s) on disk '
-                f'belong to other maps; please generate candidate regions')
+        with self._state_lock:
+            self._state_revision += 1
+            self.source = source
+            loaded = self.store.load_draft(source)
+            if loaded:
+                self.regions, self.constraints = loaded.region_set, loaded.constraints
+                return 'Loaded draft for this map'
+            self.regions = None
+            self.constraints = ConstraintSet()
+            others = self.store.other_map_set_count(source)
+            return (f'No region set for the current map; {others} region set(s) on disk '
+                    f'belong to other maps; please generate candidate regions')
 
     def generate_candidates(self):
-        self._require_source()
-        keepout = self.constraints.mask_for(self.source)
-        result = segment(self.source, cleanable_mask=self.source.free_mask() & ~keepout)
-        self.regions = RegionSet.from_segmentation(result, self.source.resolution, self.source.origin,
-            base_cleanable=self.source.free_mask(), keepout_mask=keepout)
+        with self._state_lock:
+            self._require_source()
+            source = self.source
+            source_identity = source.identity
+            state_revision = self._state_revision
+            keepout = self.constraints.mask_for(source)
+            cleanable = source.free_mask() & ~keepout
+
+        result = self.segmenter(source, cleanable_mask=cleanable)
+        candidate_regions = RegionSet.from_segmentation(
+            result,
+            source.resolution,
+            source.origin,
+            base_cleanable=source.free_mask(),
+            keepout_mask=keepout,
+        )
+
+        with self._state_lock:
+            if self.source is None or self.source.identity != source_identity:
+                raise RuntimeError(
+                    'Source map changed while segmentation was running; '
+                    'discarded stale result')
+            if self._state_revision != state_revision:
+                raise RuntimeError(
+                    'Editor state changed while segmentation was running; '
+                    'discarded stale result')
+            self.regions = candidate_regions
         return result
 
     def paint_cell(self, label, row, col, erase=False):
@@ -85,9 +116,11 @@ class EditorController:
         self._set_constraints(ConstraintSet(keepouts, walls))
 
     def _set_constraints(self, constraints):
-        self.constraints = constraints
-        if self.regions is not None:
-            self.regions.apply_keepout_mask(constraints.mask_for(self.source))
+        with self._state_lock:
+            self._state_revision += 1
+            self.constraints = constraints
+            if self.regions is not None:
+                self.regions.apply_keepout_mask(constraints.mask_for(self.source))
 
     def save_draft(self):
         self._require_regions(); return self.store.save_draft(self.source, self.regions, self.constraints)

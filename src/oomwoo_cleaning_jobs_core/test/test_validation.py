@@ -2,10 +2,9 @@
 
 import numpy as np
 
-from fixtures import make_two_rooms_map
+from fixtures import fake_segmentation, make_two_rooms_map
 
 from oomwoo_cleaning_jobs_core.regions import RegionSet
-from oomwoo_cleaning_jobs_core.segmentation import segment
 from oomwoo_cleaning_jobs_core.validation import (
     LEVEL_ERROR,
     LEVEL_WARNING,
@@ -16,7 +15,7 @@ from oomwoo_cleaning_jobs_core.validation import (
 
 def _make_region_set():
     source = make_two_rooms_map()
-    result = segment(source)
+    result = fake_segmentation(source)
     return source, RegionSet.from_segmentation(
         result, resolution=source.resolution, origin=source.origin)
 

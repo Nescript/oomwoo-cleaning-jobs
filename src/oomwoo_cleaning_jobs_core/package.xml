@@ -4,14 +4,14 @@
   <name>oomwoo_cleaning_jobs_core</name>
   <version>0.1.0</version>
   <description>
-    Pure Python core library for oomwoo_cleaning_jobs: map loading and
-    identity, auto segmentation, Region mask editing, spatial constraints,
-    validation and persistence. Zero ROS dependencies, headless-pytestable;
-    ROS 2 serves only as an adapter layer (see docs/DEVELOPMENT.md).
+    Pure Python domain library for editable and persisted cleaning Region Sets,
+    spatial constraints, and publish-time validation. Room segmentation is
+    provided through oomwoo_segmentation.
   </description>
   <maintainer email="dev@example.com">oomwoo</maintainer>
   <license>Apache 2.0</license>
 
+  <exec_depend>oomwoo_segmentation</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-scipy</exec_depend>

@@ -5,12 +5,11 @@ import math
 import numpy as np
 import pytest
 
-from fixtures import make_two_rooms_map
+from fixtures import fake_segmentation, make_two_rooms_map
 
 from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout, VirtualWall
 from oomwoo_cleaning_jobs_core.regions import UNASSIGNED, RegionSet
-from oomwoo_cleaning_jobs_core.segmentation import segment
-from oomwoo_cleaning_jobs_core.source_map import FREE, SourceMap
+from oomwoo_segmentation.source_map import FREE, SourceMap
 from oomwoo_cleaning_jobs_core.validation import validate_region_set
 
 
@@ -82,7 +81,7 @@ def test_constraints_exclude_candidates_and_clip_existing_regions():
         keepouts=(Keepout('left-table', _cell_box(source, 40, 15, radius_cells=2)),))
     keepout_mask = constraints.mask_for(source)
 
-    constrained = segment(
+    constrained = fake_segmentation(
         source, cleanable_mask=source.free_mask() & ~keepout_mask)
     assert not (constrained.labels[keepout_mask] != UNASSIGNED).any()
 
@@ -101,7 +100,7 @@ def test_constraints_exclude_candidates_and_clip_existing_regions():
     assert constrained_set.cleanable[40, 15]
     assert constrained_set.labels[40, 15] == UNASSIGNED
 
-    original = segment(source)
+    original = fake_segmentation(source)
     region_set = RegionSet.from_segmentation(
         original, resolution=source.resolution, origin=source.origin)
     assert (region_set.labels[keepout_mask] != UNASSIGNED).any()
@@ -119,13 +118,13 @@ def test_constraints_exclude_candidates_and_clip_existing_regions():
 
 def test_constraint_inputs_and_validation_reject_wrong_shape():
     source = make_two_rooms_map()
-    result = segment(source)
+    result = fake_segmentation(source)
     region_set = RegionSet.from_segmentation(
         result, resolution=source.resolution, origin=source.origin)
 
     with pytest.raises(ValueError, match='shape'):
         region_set.apply_keepout_mask(np.zeros((2, 2), dtype=bool))
     with pytest.raises(ValueError, match='shape'):
-        segment(source, cleanable_mask=np.zeros((2, 2), dtype=bool))
+        fake_segmentation(source, cleanable_mask=np.zeros((2, 2), dtype=bool))
     with pytest.raises(ValueError, match='shape'):
         validate_region_set(region_set, keepout_mask=np.zeros((2, 2), dtype=bool))

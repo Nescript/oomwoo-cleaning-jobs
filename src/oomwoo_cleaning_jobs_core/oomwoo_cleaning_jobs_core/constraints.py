@@ -14,7 +14,7 @@ import math
 import cv2
 import numpy as np
 
-from .source_map import SourceMap
+from oomwoo_segmentation.source_map import SourceMap
 
 Point = tuple[float, float]
 

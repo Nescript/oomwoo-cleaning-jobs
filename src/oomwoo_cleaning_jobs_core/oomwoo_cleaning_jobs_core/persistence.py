@@ -14,8 +14,9 @@ import numpy as np
 import yaml
 
 from .constraints import ConstraintSet, Keepout, VirtualWall
+from oomwoo_segmentation.source_map import FREE, OCCUPIED, UNKNOWN, SourceMap
+
 from .regions import RegionSet
-from .source_map import FREE, OCCUPIED, UNKNOWN, SourceMap
 from .validation import check_masks_overlap, validate_region_set
 
 DEFAULT_STORAGE_ROOT = Path.home() / '.local/share/oomwoo_cleaning_jobs/maps'
