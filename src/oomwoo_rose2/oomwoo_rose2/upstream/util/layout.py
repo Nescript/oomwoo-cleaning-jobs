@@ -100,8 +100,15 @@ def external_contour(img_rgb):
 	else:
 		raise EnvironmentError('Opencv Version Error. You should have OpenCv 3.* or Opencv 4.*')
 
-	contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
-	contours_max = contours[1]
+	# The desired layout boundary is the largest connected free-space
+	# contour. Upstream instead selected the second non-free contour, which
+	# crashes on cropped maps and can select a furniture island on real maps.
+	free_space = numpy.where(img_gray > 253, 255, 0).astype(numpy.uint8)
+	free_contours, _ = cv2.findContours(
+		free_space, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+	if not free_contours:
+		raise ValueError('map has no free-space contour')
+	contours_max = max(free_contours, key=cv2.contourArea)
 	perimeter = cv2.arcLength(contours_max, True)
 	approx = cv2.approxPolyDP(contours_max, 0.0002 * perimeter, True)
 	screen_cnt = approx
@@ -153,6 +160,7 @@ def extend_line(spatial_clusters, walls, x_min, x_max, y_min, y_max):
 
 
 def classification_surface(vertices, cells, threshold):
+	global centroid
 	# classification of cells(surfaces) that are selected by extended segments
 	contour = Polygon(vertices)
 	# add buffer to clean contour
@@ -163,6 +171,7 @@ def classification_surface(vertices, cells, threshold):
 	cells_out = []
 	cells_partial = []
 	points = []
+	centroid = (0.0, 0.0)
 	for index, f in enumerate(cells):
 		points = []
 		for b in f.borders:
@@ -170,10 +179,16 @@ def classification_surface(vertices, cells, threshold):
 			points.append([float(b.x2), float(b.y2)])
 		# obtain vertices of cell without repetition
 		points = sort_and_deduplicate(points)
+		if len(points) < 3:
+			# Coincident extended lines can produce a degenerate cell. Older
+			# Shapely paths reached this implicitly; Shapely 2 rejects it.
+			f.set_out(True)
+			f.set_partial(False)
+			cells_out.append(f)
+			continue
 		# ordered clockwise (senso orario)
 		x = [p[0] for p in points]
 		y = [p[1] for p in points]
-		global centroid
 		centroid = (sum(x) / len(points), sum(y) / len(points))
 		points.sort(key=algo)
 		# create polygon of cell
@@ -249,6 +264,8 @@ def create_polygon(cells, cells_out, cells_partial):
 			points.append([float(b.x1), float(b.y1)])
 			points.append([float(b.x2), float(b.y2)])
 		points = sort_and_deduplicate(points)
+		if len(points) < 3:
+			continue
 		x = [p[0] for p in points]
 		y = [p[1] for p in points]
 		centroid = (sum(x) / len(points), sum(y) / len(points))
@@ -264,6 +281,8 @@ def create_polygon(cells, cells_out, cells_partial):
 			points.append([float(b.x1),float(b.y1)])
 			points.append([float(b.x2),float(b.y2)])
 		points = sort_and_deduplicate(points)
+		if len(points) < 3:
+			continue
 		x = [p[0] for p in points]
 		y = [p[1] for p in points]
 		centroid = (sum(x) / len(points), sum(y) / len(points))
@@ -527,6 +546,8 @@ def get_partial_cells(cells, cells_out, border_coordinates):
 			points.append([float(b.x1), float(b.y1)])
 			points.append([float(b.x2), float(b.y2)])
 		points = sort_and_deduplicate(points)
+		if len(points) < 3:
+			continue
 		x = [p[0] for p in points]
 		y = [p[1] for p in points]
 		global centroid
@@ -546,6 +567,8 @@ def get_out_polygons(cells_out):
 			points.append([float(b.x1), float(b.y1)])
 			points.append([float(b.x2), float(b.y2)])
 		points = sort_and_deduplicate(points)
+		if len(points) < 3:
+			continue
 		x = [p[0] for p in points]
 		y = [p[1] for p in points]
 		global centroid

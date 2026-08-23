@@ -1,0 +1,3 @@
+input: docs/demo/two_rooms.render.png
+embedded_render_scale: 1
+algorithm_input: source.png

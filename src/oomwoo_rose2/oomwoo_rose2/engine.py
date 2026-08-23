@@ -20,7 +20,7 @@ from oomwoo_segmentation.validation import canonicalize_labels, effective_cleana
 UPSTREAM_REPOSITORY = 'https://github.com/aislabunimi/ROSE2'
 UPSTREAM_COMMIT = '3a010b9e6bb2477de3b5b46208ebfccd71dfafbf'
 IMPLEMENTATION_ID = 'rose2'
-IMPLEMENTATION_VERSION = f'upstream-{UPSTREAM_COMMIT[:12]}+oomwoo.1'
+IMPLEMENTATION_VERSION = f'upstream-{UPSTREAM_COMMIT[:12]}+oomwoo.2'
 
 _LOG = logging.getLogger(__name__)
 

@@ -677,7 +677,7 @@ class FFTStructureExtraction:
                     Y1 = (c - a * X1) / b
                     X2 = self.binary_map.shape[0]
                     Y2 = (c - a * X2) / b
-                if np.abs(Y1) > 3 * np.max(self.binary_map.shape) or b == 0:
+                if b == 0 or np.abs(Y1) > 3 * np.max(self.binary_map.shape):
                     ###
                     Y1 = 0
                     X1 = (c - b * Y1) / a
@@ -726,7 +726,7 @@ class FFTStructureExtraction:
                     Y1 = (c - a * X1) / b
                     X2 = self.binary_map.shape[0]
                     Y2 = (c - a * X2) / b
-                if np.abs(Y1) > 3 * np.max(self.binary_map.shape) or b == 0:
+                if b == 0 or np.abs(Y1) > 3 * np.max(self.binary_map.shape):
                     ###
                     Y1 = 0
                     X1 = (c - b * Y1) / a
