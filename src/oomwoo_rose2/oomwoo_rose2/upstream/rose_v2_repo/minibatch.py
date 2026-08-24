@@ -188,7 +188,7 @@ class Minibatch:
         # ---------------------------1.8_SET EDGES WEIGHTS-------------------------------------
 
         edges = sg.set_weights(edges, walls)
-        self.edges_th1 = sg.set_weights(self.edges_th1, walls)
+        self.edges_th1 = sg.set_weights(self.edges_th1, walls, orebro_img)
         # threshold edges (added)
         for e in self.edges_th1:
             if (e.weight < param_obj.threshold_edges):
@@ -218,6 +218,9 @@ class Minibatch:
             # ---------------------------POLYGON CELLS---------------------------------------------
             # TODO this method could be deleted. check. Not used anymore.
             (cells_polygons_th1, polygon_out_th1, polygon_partial_th1, centroid_th1) = lay.create_polygon(cells_th1, cells_out_th1,cells_partials_th1)
+
+            cells_th1, cells_polygons_th1 = lay.remove_frame_fringes(
+                cells_th1, cells_polygons_th1, (xmin, ymin, xmax, ymax))
 
 
             # ----------------------MATRICES L, D, D^-1, ED M = D^-1 * L--------------------------

@@ -39,7 +39,7 @@ ros2 run oomwoo_segmentation oomwoo-render-map <map.yaml> --segment
 ros2 run oomwoo_cleaning_jobs_ui oomwoo-cleaning-jobs-ui
 ```
 
-ROSE2 renderings are written by `oomwoo-render-map`; provider diagnostics can be requested with `--diagnostics-dir`. A generated two-room example is in `docs/demo/two_rooms.segments.png`, with ROSE2 stage images under `docs/demo/rose2/`. The five-map regression output and visual assessment are in `docs/output/README.md` and `docs/output/summary.png`.
+ROSE2 renderings are written by `oomwoo-render-map`; provider diagnostics can be requested with `--diagnostics-dir`. Test input maps live under `src/oomwoo_rose2/test/maps/` (local demo maps in `demo/`, upstream ROSE2 maps in `rose2_upstream/`). Every test run writes its outputs under `output/`: a generated two-room example is in `output/two_rooms/segments.png`, with ROSE2 stage images under `output/two_rooms/diagnostics/`. The five-map regression output and visual assessment are in `output/README.md` and `output/summary.png`.
 GUI manual acceptance: `src/oomwoo_cleaning_jobs_ui/docs/MANUAL_ACCEPTANCE.md`.
 
 ## License

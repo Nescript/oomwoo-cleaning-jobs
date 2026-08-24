@@ -12,6 +12,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/LabelGrid.msg"
   "msg/MaskGrid.msg"
   "msg/Room.msg"
+  "msg/WallSegment.msg"
   "action/SegmentRooms.action"
   DEPENDENCIES nav_msgs sensor_msgs std_msgs
 )

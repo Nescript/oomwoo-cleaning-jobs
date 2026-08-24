@@ -14,6 +14,7 @@ import math
 import cv2
 import numpy as np
 
+from oomwoo_segmentation.models import WallSegment
 from oomwoo_segmentation.source_map import SourceMap
 
 Point = tuple[float, float]
@@ -69,6 +70,26 @@ class VirtualWall:
         object.__setattr__(self, 'start', start)
         object.__setattr__(self, 'end', end)
         object.__setattr__(self, 'width_m', width_m)
+
+    @classmethod
+    def from_detected_wall(
+        cls,
+        identifier: str,
+        wall: WallSegment,
+        width_m: float,
+    ) -> VirtualWall:
+        """Convert a Detected Wall into a Virtual Wall candidate.
+
+        Detected walls are algorithm suggestions; this conversion only
+        happens on explicit user confirmation, so the resulting VirtualWall
+        remains a user-owned, independently persisted constraint.
+        """
+        return cls(
+            identifier=identifier,
+            start=(wall.x1, wall.y1),
+            end=(wall.x2, wall.y2),
+            width_m=width_m,
+        )
 
     @property
     def polygon(self) -> tuple[Point, Point, Point, Point]:

@@ -51,14 +51,14 @@ ROS 1 nodes, services, RViz integration, and pickled Python-object messages are 
 - [x] Add deterministic test-only provider fakes for cleaning domain tests.
 - [x] Delete maximin/watershed/saddle/doorway implementations, tests, CLI, parameters, and demo.
 - [x] Update package manifests, entry points, README, and development documentation.
-- [x] Generate final and intermediate ROSE2 example images under `docs/demo/`.
+- [x] Generate final and intermediate ROSE2 example images under `output/` (test inputs since moved to `src/oomwoo_rose2/test/maps/`).
 
 ## Verification
 
 - Joint `colcon build` of all five affected packages: passed.
-- Full `colcon test` and `colcon test-result --verbose`: passed.
-- Full source pytest with ROSE2 dependencies: 85 passed, including Qt worker execution, stale-map-result rejection, strict shared-contract validation, post-extraction cancellation, and five exact docs-map room/unassigned regressions.
-- ROSE2 provider tests with full dependencies: 10 passed, including the real pinned upstream pipeline, cropped/real-map compatibility, frame-line deduplication, and furniture-line filtering cases.
+- Full `colcon test` and `colcon test-result --verbose`: 81 tests, 0 errors, 0 failures, 1 dependency-gated skip.
+- Full source pytest with ROSE2 dependencies: 96 passed, including Qt worker execution, stale-map-result rejection, strict shared-contract validation, post-extraction cancellation, detected-wall contract coverage, and six exact demo-map room/unassigned regressions.
+- ROSE2 provider tests with full dependencies: 16 passed, including the real pinned upstream pipeline, cropped/real-map compatibility, frame-line deduplication, furniture-line filtering, structural-raster edge recovery, strict frame-fringe rejection, and `room4` label/wall regressions.
 - End-to-end ROS 2 server/client test: cancellation returned Action `CANCELED` plus contract `STATUS_CANCELLED`; a subsequent goal succeeded and produced base, final segmentation, cleaned-map, extended-line, and label-overlay PNGs.
 - Legacy algorithm symbol scan: no runtime implementation or fallback remained.
 - `git diff --check`: passed.

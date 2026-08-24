@@ -1,0 +1,22 @@
+map file : src/oomwoo_rose2/test/maps/demo/living_room.render.png
+normalization : embedded_render_scale=2
+size     : 99x98 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : 55b57bf08e1ac10c43f8d6d34a4203dda0a3748cb961ddb19cf92c433a53de06
+cells    : free 7729 (79.7%), occupied 935, unknown 1038
+base map : output/living_room/source.render.png
+implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+rooms : 1
+walls : 5
+  (0.03,0.03)-(0.03,4.83) support=1.000 dir=1.571
+  (0.03,0.03)-(4.88,0.03) support=1.000 dir=0.000
+  (0.08,0.03)-(0.08,4.83) support=0.990 dir=1.571
+  (0.03,0.12)-(4.88,0.03) support=0.980 dir=3.121
+  (0.03,4.48)-(4.88,4.42) support=0.980 dir=3.131
+  #1: 18.20 m^2 (7280 cells)
+unassigned : 449 cells (5.8% of free)
+segments : output/living_room/segments.png
+walls overlay : output/living_room/walls.png
+diagnostic : output/living_room/diagnostics/01_cleaned_map.png
+diagnostic : output/living_room/diagnostics/02_extended_lines.png
+diagnostic : output/living_room/diagnostics/03_labels_overlay.png

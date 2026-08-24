@@ -90,7 +90,7 @@ class Rose2SegmentationNode(Node):
             goal_handle.abort()
             return response
 
-        labels, rooms, diagnostics = result_to_ros_messages(result, source_map)
+        labels, rooms, walls, diagnostics = result_to_ros_messages(result, source_map)
         if goal_handle.is_cancel_requested:
             response.status = SegmentRooms.Result.STATUS_CANCELLED
             response.message = 'segmentation cancelled'
@@ -102,6 +102,7 @@ class Rose2SegmentationNode(Node):
         response.implementation_version = result.implementation_version
         response.labels = labels
         response.rooms = rooms
+        response.walls = walls
         response.diagnostics = diagnostics
         goal_handle.succeed()
         return response

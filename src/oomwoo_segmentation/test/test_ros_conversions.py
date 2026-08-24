@@ -1,6 +1,6 @@
 import numpy as np
 
-from oomwoo_segmentation.models import DiagnosticImage, SegmentationResult
+from oomwoo_segmentation.models import DiagnosticImage, SegmentationResult, WallSegment
 from oomwoo_segmentation.ros_conversions import (
     array_from_mask_grid,
     mask_grid_from_array,
@@ -42,17 +42,21 @@ def test_result_messages_round_trip():
     labels[1:4, 4:6] = 2
     canonical, regions, cleanable = canonicalize_labels(labels, source, None)
     diagnostic = np.zeros((4, 6, 3), dtype=np.uint8)
+    wall = WallSegment(
+        x1=-0.9, y1=2.15, x2=-0.8, y2=2.15, support=0.8, direction_rad=0.0)
     result = SegmentationResult(
         canonical, regions, cleanable, 'test-provider', '1.2.3',
-        (DiagnosticImage('stage', diagnostic),),
+        walls=(wall,),
+        diagnostics=(DiagnosticImage('stage', diagnostic),),
     )
 
-    grid, rooms, diagnostics = result_to_ros_messages(result, source)
+    grid, rooms, walls, diagnostics = result_to_ros_messages(result, source)
     restored = result_from_ros_messages(
-        grid, rooms, diagnostics, source, None, 'test-provider', '1.2.3')
+        grid, rooms, walls, diagnostics, source, None, 'test-provider', '1.2.3')
 
     validate_result(restored, source)
     assert np.array_equal(restored.labels, result.labels)
     assert restored.regions == result.regions
+    assert restored.walls == (wall,)
     assert restored.diagnostics[0].stage == 'stage'
     assert np.array_equal(restored.diagnostics[0].image, diagnostic)

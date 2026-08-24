@@ -1,0 +1,38 @@
+map file : src/oomwoo_rose2/test/maps/rose2_upstream/Freiburg_Building_079/map8.yaml
+size     : 1152x736 cells @ 0.05 m/cell
+origin   : (-100.0, -100.0, 0.0)
+identity : 1b239e09d61b604ed293bd4fa3cd8722da64f57790bc3f35db6ab87805c4cf85
+cells    : free 137484 (16.2%), occupied 11313, unknown 699075
+base map : output/rose2_upstream/Freiburg_Building_079-map8/source.render.png
+implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+rooms : 8
+walls : 15
+  (-89.33,-90.33)-(-89.33,-72.72) support=1.000 dir=1.571
+  (-89.33,-90.33)-(-51.67,-90.33) support=1.000 dir=0.000
+  (-89.33,-72.72)-(-51.67,-72.72) support=1.000 dir=0.000
+  (-62.57,-78.67)-(-67.67,-78.33) support=1.000 dir=3.073
+  (-56.88,-78.03)-(-57.97,-93.08) support=1.000 dir=1.498
+  (-51.67,-90.33)-(-51.67,-72.72) support=1.000 dir=1.571
+  (-89.33,-81.83)-(-51.67,-84.38) support=0.580 dir=3.074
+  (-89.33,-79.38)-(-51.67,-81.92) support=0.527 dir=3.074
+  (-68.28,-90.33)-(-67.03,-72.72) support=0.409 dir=1.500
+  (-89.33,-73.72)-(-51.67,-76.22) support=0.316 dir=3.075
+  (-89.33,-87.47)-(-51.67,-89.97) support=0.291 dir=3.075
+  (-59.17,-90.33)-(-57.92,-72.72) support=0.275 dir=1.500
+  (-63.62,-90.33)-(-62.38,-72.72) support=0.274 dir=1.500
+  (-71.17,-90.33)-(-69.92,-72.72) support=0.270 dir=1.500
+  (-55.77,-85.17)-(-54.88,-72.47) support=0.232 dir=1.500
+  #1: 21.74 m^2 (8694 cells)
+  #2: 20.18 m^2 (8071 cells)
+  #3: 14.24 m^2 (5695 cells)
+  #4: 50.47 m^2 (20186 cells)
+  #5: 69.61 m^2 (27845 cells)
+  #6: 43.87 m^2 (17546 cells)
+  #7: 44.82 m^2 (17928 cells)
+  #8: 70.23 m^2 (28091 cells)
+unassigned : 3428 cells (2.5% of free)
+segments : output/rose2_upstream/Freiburg_Building_079-map8/segments.png
+walls overlay : output/rose2_upstream/Freiburg_Building_079-map8/walls.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map8/diagnostics/01_cleaned_map.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map8/diagnostics/02_extended_lines.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map8/diagnostics/03_labels_overlay.png

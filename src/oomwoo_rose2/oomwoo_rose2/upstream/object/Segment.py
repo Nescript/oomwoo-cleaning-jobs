@@ -332,7 +332,43 @@ def set_weight_offset_edges(border_lines, edges_th1):
 			edge.set_weight(1)
 
 
-def set_weights(edges, wall_list):
+def structural_raster_support(edge, structural_image):
+	"""Return local structural-pixel coverage for an edge.
+
+	The probabilistic Hough transform may omit a wall run even when the ROSE
+	structural raster contains it. Sample the two pixels nearest the edge in
+	the perpendicular direction so slightly oblique dominant lines still map
+	back to their source wall without dilating along the edge.
+	"""
+	image = np.asarray(structural_image, dtype=bool)
+	sample_count = max(1, int(math.ceil(length(
+		edge.x1, edge.y1, edge.x2, edge.y2))))
+	vertical = abs(edge.y2 - edge.y1) > abs(edge.x2 - edge.x1)
+	hits = 0
+	for t in np.linspace(0.0, 1.0, sample_count + 1):
+		x = edge.x1 + t * (edge.x2 - edge.x1)
+		y = edge.y1 + t * (edge.y2 - edge.y1)
+		if vertical:
+			coordinates = (
+				(int(math.floor(x)), int(round(y))),
+				(int(math.ceil(x)), int(round(y))),
+			)
+		else:
+			coordinates = (
+				(int(round(x)), int(math.floor(y))),
+				(int(round(x)), int(math.ceil(y))),
+			)
+		if any(
+			0 <= row < image.shape[0]
+			and 0 <= column < image.shape[1]
+			and image[row, column]
+			for column, row in coordinates
+		):
+			hits += 1
+	return hits / (sample_count + 1)
+
+
+def set_weights(edges, wall_list, structural_image=None):
 	# set weight to each edge.
 	# for each edge take walls with same spatial_cluster and projected them on extended segment with same spatial_cluster
 	# first of all delete all the projections included completely in other projections, then merge projections that are
@@ -370,6 +406,15 @@ def set_weights(edges, wall_list):
 		else:
 			weight = coverage / length(edge.x1, edge.y1, edge.x2, edge.y2)
 			# weight = 0.2
+		# HoughLinesP can consume collinear pixels without returning every
+		# local run. Only repair a zero-weight retained structural edge; never
+		# perturb positive Hough-derived weights or synthetic frame edges.
+		if (
+			weight == 0
+			and structural_image is not None
+			and edge.angular_cluster is not None
+		):
+			weight = structural_raster_support(edge, structural_image)
 		edge.set_weight(weight)
 		del projections[:]
 	return edges

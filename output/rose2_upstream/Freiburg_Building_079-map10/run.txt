@@ -1,0 +1,40 @@
+map file : src/oomwoo_rose2/test/maps/rose2_upstream/Freiburg_Building_079/map10.yaml
+size     : 1152x736 cells @ 0.05 m/cell
+origin   : (-100.0, -100.0, 0.0)
+identity : 8da54e17cdff7c1a0c92556aca95b981203da49d0d53921e937518103fac2266
+cells    : free 142562 (16.8%), occupied 12756, unknown 692554
+base map : output/rose2_upstream/Freiburg_Building_079-map10/source.render.png
+implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+rooms : 11
+walls : 14
+  (-89.33,-90.28)-(-89.33,-72.72) support=1.000 dir=1.571
+  (-89.33,-90.28)-(-51.67,-90.28) support=1.000 dir=0.000
+  (-89.33,-72.72)-(-51.67,-72.72) support=1.000 dir=0.000
+  (-51.67,-90.28)-(-51.67,-72.72) support=1.000 dir=1.571
+  (-89.33,-81.88)-(-51.67,-84.42) support=0.569 dir=3.074
+  (-89.33,-79.38)-(-51.67,-81.92) support=0.545 dir=3.074
+  (-89.33,-87.33)-(-51.67,-89.88) support=0.408 dir=3.074
+  (-68.22,-90.28)-(-66.97,-72.72) support=0.400 dir=1.500
+  (-71.72,-90.28)-(-70.47,-72.72) support=0.375 dir=1.500
+  (-89.33,-73.67)-(-51.67,-76.17) support=0.312 dir=3.075
+  (-80.33,-90.28)-(-79.08,-72.72) support=0.267 dir=1.500
+  (-63.67,-90.28)-(-62.42,-72.72) support=0.252 dir=1.500
+  (-59.12,-90.28)-(-57.88,-72.72) support=0.227 dir=1.500
+  (-55.77,-85.17)-(-54.82,-72.42) support=0.223 dir=1.496
+  #1: 21.89 m^2 (8754 cells)
+  #2: 20.01 m^2 (8002 cells)
+  #3: 15.17 m^2 (6069 cells)
+  #4: 39.96 m^2 (15982 cells)
+  #5: 15.11 m^2 (6043 cells)
+  #6: 95.26 m^2 (38105 cells)
+  #7: 14.40 m^2 (5760 cells)
+  #8: 22.31 m^2 (8924 cells)
+  #9: 22.63 m^2 (9053 cells)
+  #10: 31.01 m^2 (12405 cells)
+  #11: 45.62 m^2 (18248 cells)
+unassigned : 5217 cells (3.7% of free)
+segments : output/rose2_upstream/Freiburg_Building_079-map10/segments.png
+walls overlay : output/rose2_upstream/Freiburg_Building_079-map10/walls.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map10/diagnostics/01_cleaned_map.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map10/diagnostics/02_extended_lines.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map10/diagnostics/03_labels_overlay.png

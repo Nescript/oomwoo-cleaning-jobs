@@ -128,3 +128,17 @@ def test_constraint_inputs_and_validation_reject_wrong_shape():
         fake_segmentation(source, cleanable_mask=np.zeros((2, 2), dtype=bool))
     with pytest.raises(ValueError, match='shape'):
         validate_region_set(region_set, keepout_mask=np.zeros((2, 2), dtype=bool))
+
+
+def test_virtual_wall_from_detected_wall():
+    from oomwoo_segmentation.models import WallSegment
+
+    wall = WallSegment(x1=1.0, y1=2.0, x2=3.0, y2=2.0,
+                       support=0.9, direction_rad=0.0)
+    converted = VirtualWall.from_detected_wall('wall-1', wall, width_m=0.1)
+
+    assert converted.identifier == 'wall-1'
+    assert converted.start == (1.0, 2.0)
+    assert converted.end == (3.0, 2.0)
+    assert converted.width_m == 0.1
+    assert len(converted.polygon) == 4

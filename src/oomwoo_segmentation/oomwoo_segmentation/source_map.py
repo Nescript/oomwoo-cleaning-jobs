@@ -95,6 +95,38 @@ class SourceMap:
     def short_id(self) -> str:
         return self.identity[:12]
 
+    def map_frame_from_pixel(self, px: float, py: float) -> tuple[float, float]:
+        """Pipeline pixel (col, row), row 0 = bottom -> map frame (meters).
+
+        Pixel coordinates refer to cell centers, matching the constraint
+        rasterization convention: cell (col, row) center sits at
+        ((col + 0.5) * resolution, (row + 0.5) * resolution) in the
+        map-local frame, rotated by origin yaw and translated by origin x/y.
+        """
+        ox, oy, yaw = self.origin
+        local_x = (px + 0.5) * self.resolution
+        local_y = (py + 0.5) * self.resolution
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
+        return (
+            ox + cos_yaw * local_x - sin_yaw * local_y,
+            oy + sin_yaw * local_x + cos_yaw * local_y,
+        )
+
+    def pixel_from_map_frame(self, x: float, y: float) -> tuple[float, float]:
+        """Map frame (meters) -> pipeline pixel (col, row), inverse of
+        :meth:`map_frame_from_pixel`."""
+        ox, oy, yaw = self.origin
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
+        dx, dy = x - ox, y - oy
+        local_x = cos_yaw * dx + sin_yaw * dy
+        local_y = -sin_yaw * dx + cos_yaw * dy
+        return (
+            local_x / self.resolution - 0.5,
+            local_y / self.resolution - 0.5,
+        )
+
     def free_mask(self, free_thresh: float = DEFAULT_FREE_THRESH) -> np.ndarray:
         """Boolean mask of known free (cleanable) cells: 0 <= v < free_thresh*100."""
         return (self.cells >= 0) & (self.cells < free_thresh * 100)

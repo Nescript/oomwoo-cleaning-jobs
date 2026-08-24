@@ -1,0 +1,28 @@
+map file : src/oomwoo_rose2/test/maps/demo/grid6_furniture.render.png
+normalization : embedded_render_scale=3
+size     : 94x63 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : f492daf35b54f3db3bc491426c2bf54f4258f1c015b2f888e919af2fbe3516c5
+cells    : free 5345 (90.3%), occupied 577, unknown 0
+base map : output/grid6_furniture/source.render.png
+implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+rooms : 6
+walls : 6
+  (0.03,0.03)-(0.03,3.08) support=1.000 dir=1.571
+  (0.03,0.03)-(4.62,0.03) support=1.000 dir=0.000
+  (2.33,0.03)-(4.62,0.08) support=0.979 dir=0.022
+  (0.03,1.53)-(4.62,1.62) support=0.415 dir=0.022
+  (3.12,0.03)-(3.12,3.08) support=0.317 dir=1.571
+  (1.58,0.03)-(1.58,3.08) support=0.286 dir=1.571
+  #1: 2.12 m^2 (849 cells)
+  #2: 2.13 m^2 (851 cells)
+  #3: 2.30 m^2 (920 cells)
+  #4: 2.31 m^2 (925 cells)
+  #5: 2.29 m^2 (915 cells)
+  #6: 2.21 m^2 (885 cells)
+unassigned : 0 cells (0.0% of free)
+segments : output/grid6_furniture/segments.png
+walls overlay : output/grid6_furniture/walls.png
+diagnostic : output/grid6_furniture/diagnostics/01_cleaned_map.png
+diagnostic : output/grid6_furniture/diagnostics/02_extended_lines.png
+diagnostic : output/grid6_furniture/diagnostics/03_labels_overlay.png

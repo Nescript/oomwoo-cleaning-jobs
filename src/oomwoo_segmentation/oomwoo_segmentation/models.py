@@ -29,6 +29,27 @@ class DiagnosticImage:
 
 
 @dataclass(frozen=True)
+class WallSegment:
+    """One detected wall segment in the map frame (meters).
+
+    Derived, non-authoritative data: the authoritative segmentation result
+    remains the label grid. Detected walls are reproducible algorithm output,
+    never persisted as-is; converting one into a user constraint (Virtual
+    Wall) requires explicit user confirmation.
+
+    ``support`` is the provider-computed evidence fraction in [0, 1];
+    ``direction_rad`` is the wall direction in the map frame in [0, pi).
+    """
+
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    support: float
+    direction_rad: float
+
+
+@dataclass(frozen=True)
 class SegmentationResult:
     """Canonical result shared by every room-segmentation implementation.
 
@@ -41,6 +62,7 @@ class SegmentationResult:
     cleanable_mask: np.ndarray
     implementation_id: str
     implementation_version: str
+    walls: tuple[WallSegment, ...] = ()
     diagnostics: tuple[DiagnosticImage, ...] = ()
 
     @property

@@ -12,10 +12,11 @@ from oomwoo_segmentation_interfaces.msg import (
     LabelGrid,
     MaskGrid,
     Room,
+    WallSegment as WallSegmentMsg,
 )
 from sensor_msgs.msg import CompressedImage
 
-from .models import CandidateRegion, DiagnosticImage, SegmentationResult
+from .models import CandidateRegion, DiagnosticImage, SegmentationResult, WallSegment
 from .source_map import SourceMap
 from .validation import effective_cleanable_mask
 
@@ -84,12 +85,39 @@ def array_from_mask_grid(message: MaskGrid, source_map: SourceMap) -> np.ndarray
     return data.reshape(source_map.cells.shape).astype(bool)
 
 
+def walls_to_ros_messages(
+    walls: tuple[WallSegment, ...],
+) -> list[WallSegmentMsg]:
+    messages: list[WallSegmentMsg] = []
+    for wall in walls:
+        message = WallSegmentMsg()
+        message.x1, message.y1 = wall.x1, wall.y1
+        message.x2, message.y2 = wall.x2, wall.y2
+        message.support = wall.support
+        message.direction_rad = wall.direction_rad
+        messages.append(message)
+    return messages
+
+
+def walls_from_ros_messages(
+    messages: list[WallSegmentMsg],
+) -> tuple[WallSegment, ...]:
+    return tuple(WallSegment(
+        x1=float(message.x1),
+        y1=float(message.y1),
+        x2=float(message.x2),
+        y2=float(message.y2),
+        support=float(message.support),
+        direction_rad=float(message.direction_rad),
+    ) for message in messages)
+
+
 def result_to_ros_messages(
     result: SegmentationResult,
     source_map: SourceMap,
     *,
     frame_id: str = 'map',
-) -> tuple[LabelGrid, list[Room], list[DiagnosticImageMsg]]:
+) -> tuple[LabelGrid, list[Room], list[WallSegmentMsg], list[DiagnosticImageMsg]]:
     grid = LabelGrid()
     grid.header.frame_id = frame_id
     grid.info = occupancy_grid_from_source_map(source_map, frame_id=frame_id).info
@@ -116,12 +144,13 @@ def result_to_ros_messages(
         message.stage = item.stage
         message.image = compressed
         diagnostics.append(message)
-    return grid, rooms, diagnostics
+    return grid, rooms, walls_to_ros_messages(result.walls), diagnostics
 
 
 def result_from_ros_messages(
     labels: LabelGrid,
     rooms: list[Room],
+    walls: list[WallSegmentMsg],
     diagnostics: list[DiagnosticImageMsg],
     source_map: SourceMap,
     cleanable_mask: np.ndarray | None,
@@ -152,5 +181,6 @@ def result_from_ros_messages(
         cleanable_mask=cleanable,
         implementation_id=implementation_id,
         implementation_version=implementation_version,
+        walls=walls_from_ros_messages(walls),
         diagnostics=tuple(decoded),
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import math
 from pathlib import Path
 import sys
 import tempfile
@@ -12,7 +13,12 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from oomwoo_segmentation.models import DiagnosticImage, SegmentationError, SegmentationResult
+from oomwoo_segmentation.models import (
+    DiagnosticImage,
+    SegmentationError,
+    SegmentationResult,
+    WallSegment,
+)
 from oomwoo_segmentation.render import render_segmentation, render_source_map
 from oomwoo_segmentation.source_map import SourceMap
 from oomwoo_segmentation.validation import canonicalize_labels, effective_cleanable_mask, validate_result
@@ -20,7 +26,7 @@ from oomwoo_segmentation.validation import canonicalize_labels, effective_cleana
 UPSTREAM_REPOSITORY = 'https://github.com/aislabunimi/ROSE2'
 UPSTREAM_COMMIT = '3a010b9e6bb2477de3b5b46208ebfccd71dfafbf'
 IMPLEMENTATION_ID = 'rose2'
-IMPLEMENTATION_VERSION = f'upstream-{UPSTREAM_COMMIT[:12]}+oomwoo.3'
+IMPLEMENTATION_VERSION = f'upstream-{UPSTREAM_COMMIT[:12]}+oomwoo.4'
 
 _LOG = logging.getLogger(__name__)
 
@@ -161,6 +167,8 @@ class Rose2Segmenter:
         if not regions:
             raise SegmentationError('ROSE2 room polygons contain no cleanable cells')
 
+        walls = self._extract_walls(source_map, batch)
+
         diagnostics: tuple[DiagnosticImage, ...] = ()
         if include_diagnostics:
             provisional = SegmentationResult(
@@ -179,6 +187,7 @@ class Rose2Segmenter:
             cleanable_mask=cleanable,
             implementation_id=self.implementation_id,
             implementation_version=self.implementation_version,
+            walls=walls,
             diagnostics=diagnostics,
         )
         validate_result(result, source_map)
@@ -217,6 +226,42 @@ class Rose2Segmenter:
                     if hole.size:
                         cv2.fillPoly(labels, [hole], 0)
         return labels
+
+    @staticmethod
+    def _extract_walls(source_map: SourceMap, batch) -> tuple[WallSegment, ...]:
+        """Convert retained merged extended segments into map-frame walls.
+
+        ``extended_segments_th1_merged`` holds the thresholded, merged wall
+        lines in pipeline pixel space (x = col, y = row, row 0 = bottom).
+        Upstream extends them past a bounding box padded by ``offset`` px, so
+        endpoints are clipped to the map rect before conversion; segments
+        lying fully outside the map are dropped. Direction is derived from
+        the converted endpoints (pixel space and map-local frame share the
+        same x-right/y-up orientation), not from the upstream angular
+        cluster, so yaw handling stays explicit.
+        """
+        walls: list[WallSegment] = []
+        rect = (0, 0, source_map.width - 1, source_map.height - 1)
+        _, _, yaw = source_map.origin
+        for segment in getattr(batch, 'extended_segments_th1_merged', ()):
+            p1 = (int(round(segment.x1)), int(round(segment.y1)))
+            p2 = (int(round(segment.x2)), int(round(segment.y2)))
+            inside, q1, q2 = cv2.clipLine(rect, p1, p2)
+            if not inside or q1 == q2:
+                continue
+            x1, y1 = source_map.map_frame_from_pixel(float(q1[0]), float(q1[1]))
+            x2, y2 = source_map.map_frame_from_pixel(float(q2[0]), float(q2[1]))
+            local_direction = math.atan2(q2[1] - q1[1], q2[0] - q1[0]) % math.pi
+            direction = (local_direction + yaw) % math.pi
+            support = float(segment.weight) if segment.weight is not None else 0.0
+            walls.append(WallSegment(
+                x1=x1, y1=y1, x2=x2, y2=y2,
+                support=min(max(support, 0.0), 1.0),
+                direction_rad=direction,
+            ))
+        # Deterministic order: by support (strongest first), then endpoints.
+        walls.sort(key=lambda w: (-w.support, w.x1, w.y1, w.x2, w.y2))
+        return tuple(walls)
 
     @staticmethod
     def _polygons(geometry):

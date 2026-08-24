@@ -74,6 +74,7 @@ class RoomSegmentationActionClient(Node):
                 result = result_from_ros_messages(
                     response.labels,
                     list(response.rooms),
+                    list(response.walls),
                     list(response.diagnostics),
                     source_map,
                     cleanable_mask,

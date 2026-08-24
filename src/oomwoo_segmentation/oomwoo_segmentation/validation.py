@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from .models import CandidateRegion, SegmentationError, SegmentationResult
@@ -98,3 +100,22 @@ def validate_result(result: SegmentationResult, source_map: SourceMap) -> None:
         expected_area = count * source_map.resolution * source_map.resolution
         if not np.isclose(region.area_m2, expected_area):
             raise SegmentationError(f'room {region.label} area mismatch')
+
+    # Detected walls are derived data: they must be finite, carry a valid
+    # support/direction, and stay within one cell of the map bounds.
+    for wall in result.walls:
+        values = (wall.x1, wall.y1, wall.x2, wall.y2)
+        if not all(math.isfinite(v) for v in values):
+            raise SegmentationError(f'wall endpoints must be finite: {values!r}')
+        if not 0.0 <= wall.support <= 1.0:
+            raise SegmentationError(
+                f'wall support must be in [0, 1], got {wall.support}')
+        if not 0.0 <= wall.direction_rad < math.pi:
+            raise SegmentationError(
+                f'wall direction must be in [0, pi), got {wall.direction_rad}')
+        for x, y in ((wall.x1, wall.y1), (wall.x2, wall.y2)):
+            px, py = source_map.pixel_from_map_frame(x, y)
+            if not (-1.0 <= px <= source_map.width and
+                    -1.0 <= py <= source_map.height):
+                raise SegmentationError(
+                    f'wall endpoint ({x}, {y}) lies outside the map bounds')

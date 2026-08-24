@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from oomwoo_segmentation.models import SegmentationError, SegmentationResult
+from oomwoo_segmentation.models import SegmentationError, SegmentationResult, WallSegment
 from oomwoo_segmentation.source_map import SourceMap
 from oomwoo_segmentation.validation import canonicalize_labels, validate_result
 
@@ -79,3 +79,49 @@ def test_validate_result_rejects_cleanable_cells_outside_source_free_space():
 
     with pytest.raises(SegmentationError, match='source free space'):
         validate_result(result, source)
+
+
+def _valid_result(source, walls=()):
+    return SegmentationResult(
+        np.zeros(source.cells.shape, dtype=np.int32),
+        (),
+        source.free_mask(),
+        'test',
+        '1.0.0',
+        walls=walls,
+    )
+
+
+def test_validate_result_accepts_walls_inside_map():
+    source = make_map()  # 8x6 cells @ 0.1, origin (0, 0, 0)
+    wall = WallSegment(x1=0.05, y1=0.25, x2=0.75, y2=0.25,
+                       support=1.0, direction_rad=0.0)
+    validate_result(_valid_result(source, (wall,)), source)
+
+
+def test_validate_result_rejects_malformed_walls():
+    source = make_map()
+    base = dict(x1=0.05, y1=0.25, x2=0.75, y2=0.25,
+                support=1.0, direction_rad=0.0)
+    with pytest.raises(SegmentationError, match='finite'):
+        validate_result(_valid_result(
+            source, (WallSegment(**{**base, 'x1': float('nan')}),)), source)
+    with pytest.raises(SegmentationError, match='support'):
+        validate_result(_valid_result(
+            source, (WallSegment(**{**base, 'support': 1.5}),)), source)
+    with pytest.raises(SegmentationError, match='direction'):
+        validate_result(_valid_result(
+            source, (WallSegment(**{**base, 'direction_rad': -0.1}),)), source)
+    with pytest.raises(SegmentationError, match='bounds'):
+        validate_result(_valid_result(
+            source, (WallSegment(**{**base, 'x2': 5.0}),)), source)
+
+
+def test_map_frame_pixel_round_trip_with_yaw():
+    source = SourceMap(0.05, 40, 30, (1.0, -2.0, 0.7),
+                       np.zeros((30, 40), dtype=np.int8))
+    for px, py in ((0.0, 0.0), (39.0, 29.0), (12.3, 4.7)):
+        x, y = source.map_frame_from_pixel(px, py)
+        back_px, back_py = source.pixel_from_map_frame(x, y)
+        assert back_px == pytest.approx(px)
+        assert back_py == pytest.approx(py)

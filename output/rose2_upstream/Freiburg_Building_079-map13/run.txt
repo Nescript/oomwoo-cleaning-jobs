@@ -1,0 +1,46 @@
+map file : src/oomwoo_rose2/test/maps/rose2_upstream/Freiburg_Building_079/map13.yaml
+size     : 1152x736 cells @ 0.05 m/cell
+origin   : (-100.0, -100.0, 0.0)
+identity : 8ecf2e590bb2e561b240ea56c901cabced488feb59b5932771a0f6175a577735
+cells    : free 149411 (17.6%), occupied 14506, unknown 683955
+base map : output/rose2_upstream/Freiburg_Building_079-map13/source.render.png
+implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+rooms : 15
+walls : 16
+  (-93.42,-90.38)-(-93.42,-72.62) support=1.000 dir=1.571
+  (-93.42,-90.38)-(-51.67,-90.38) support=1.000 dir=0.000
+  (-93.42,-72.62)-(-51.67,-72.62) support=1.000 dir=0.000
+  (-51.67,-90.38)-(-51.67,-72.62) support=1.000 dir=1.571
+  (-93.42,-81.62)-(-51.67,-84.42) support=0.540 dir=3.075
+  (-93.42,-79.08)-(-51.67,-81.88) support=0.490 dir=3.075
+  (-93.42,-73.38)-(-51.67,-76.17) support=0.467 dir=3.075
+  (-68.22,-90.38)-(-66.97,-72.62) support=0.378 dir=1.500
+  (-93.42,-87.17)-(-51.67,-89.97) support=0.362 dir=3.075
+  (-71.22,-90.38)-(-69.97,-72.62) support=0.352 dir=1.500
+  (-87.88,-90.38)-(-86.62,-72.62) support=0.350 dir=1.500
+  (-80.38,-90.38)-(-79.12,-72.62) support=0.344 dir=1.500
+  (-63.67,-90.38)-(-62.38,-72.62) support=0.263 dir=1.498
+  (-75.72,-90.38)-(-74.47,-72.62) support=0.253 dir=1.500
+  (-76.88,-83.72)-(-75.83,-69.12) support=0.236 dir=1.499
+  (-55.72,-85.12)-(-54.57,-69.12) support=0.206 dir=1.499
+  #1: 27.47 m^2 (10986 cells)
+  #2: 20.01 m^2 (8005 cells)
+  #3: 14.19 m^2 (5677 cells)
+  #4: 20.34 m^2 (8137 cells)
+  #5: 20.85 m^2 (8339 cells)
+  #6: 17.70 m^2 (7078 cells)
+  #7: 51.42 m^2 (20569 cells)
+  #8: 39.72 m^2 (15887 cells)
+  #9: 36.30 m^2 (14521 cells)
+  #10: 11.26 m^2 (4502 cells)
+  #11: 22.47 m^2 (8987 cells)
+  #12: 28.21 m^2 (11282 cells)
+  #13: 13.52 m^2 (5409 cells)
+  #14: 6.99 m^2 (2795 cells)
+  #15: 38.99 m^2 (15596 cells)
+unassigned : 1641 cells (1.1% of free)
+segments : output/rose2_upstream/Freiburg_Building_079-map13/segments.png
+walls overlay : output/rose2_upstream/Freiburg_Building_079-map13/walls.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map13/diagnostics/01_cleaned_map.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map13/diagnostics/02_extended_lines.png
+diagnostic : output/rose2_upstream/Freiburg_Building_079-map13/diagnostics/03_labels_overlay.png

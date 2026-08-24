@@ -15,6 +15,10 @@ string implementation_id
 string implementation_version
 oomwoo_segmentation_interfaces/LabelGrid labels
 oomwoo_segmentation_interfaces/Room[] rooms
+# Detected wall segments in the map frame. Derived, non-authoritative data:
+# the authoritative result remains the label grid. Providers that do not
+# detect walls return an empty array.
+oomwoo_segmentation_interfaces/WallSegment[] walls
 oomwoo_segmentation_interfaces/DiagnosticImage[] diagnostics
 ---
 # Feedback

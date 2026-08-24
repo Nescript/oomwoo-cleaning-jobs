@@ -5,7 +5,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from .models import SegmentationResult
+from .models import SegmentationResult, WallSegment
 from .source_map import SourceMap
 
 COLOR_FREE = (255, 255, 255)
@@ -39,6 +39,43 @@ def region_color(label: int) -> tuple[int, int, int]:
     hsv = np.uint8([[[hue, 200, 255]]])
     bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)[0, 0]
     return int(bgr[0]), int(bgr[1]), int(bgr[2])
+
+
+def _support_color(support: float) -> tuple[int, int, int]:
+    """Stable BGR color for a wall support value: yellow (0) to red (1)."""
+    support = min(max(float(support), 0.0), 1.0)
+    return (0, int(round(255 * (1.0 - support))), 255)
+
+
+def render_walls(
+    source_map: SourceMap,
+    walls: tuple[WallSegment, ...],
+    scale: int = 1,
+    *,
+    base: np.ndarray | None = None,
+) -> np.ndarray:
+    """Overlay detected wall segments on the map, colored by support."""
+    if scale < 1:
+        raise ValueError('scale must be >= 1')
+    image = render_source_map(source_map) if base is None else base.copy()
+    # np.flip-style views have negative strides; OpenCV needs contiguous memory.
+    cell_order = np.ascontiguousarray(image[::-1, :])
+    for wall in walls:
+        px1, py1 = source_map.pixel_from_map_frame(wall.x1, wall.y1)
+        px2, py2 = source_map.pixel_from_map_frame(wall.x2, wall.y2)
+        cv2.line(
+            cell_order,
+            (int(round(px1)), int(round(py1))),
+            (int(round(px2)), int(round(py2))),
+            _support_color(wall.support),
+            1,
+            cv2.LINE_AA,
+        )
+    image = np.ascontiguousarray(cell_order[::-1, :])
+    if scale != 1:
+        image = cv2.resize(
+            image, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+    return image
 
 
 def render_segmentation(

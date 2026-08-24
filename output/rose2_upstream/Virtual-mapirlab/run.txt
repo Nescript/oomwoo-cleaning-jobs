@@ -1,0 +1,2 @@
+map file : src/oomwoo_rose2/test/maps/rose2_upstream/Virtual/mapirlab.yaml
+error     : failed to load map: /ros_ws/src/oomwoo-cleaning-jobs/src/oomwoo_rose2/test/maps/rose2_upstream/Virtual/mapirlab.pgm: failed to read image

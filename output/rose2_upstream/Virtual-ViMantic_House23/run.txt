@@ -1,0 +1,34 @@
+map file : src/oomwoo_rose2/test/maps/rose2_upstream/Virtual/ViMantic_House23.yaml
+size     : 800x800 cells @ 0.05 m/cell
+origin   : (-20.0, -20.0, 0.0)
+identity : b8f6db77519d4d65c9a0465a4d7afc955d1fe2d94c81d157f31e55d2cb5b038b
+cells    : free 40538 (6.3%), occupied 5765, unknown 593697
+base map : output/rose2_upstream/Virtual-ViMantic_House23/source.render.png
+implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+rooms : 7
+walls : 12
+  (-3.72,-14.57)-(-3.72,7.58) support=1.000 dir=1.571
+  (-3.72,-14.57)-(5.18,-14.57) support=1.000 dir=0.000
+  (-3.72,7.58)-(5.18,7.58) support=1.000 dir=0.000
+  (5.18,-14.57)-(5.18,7.58) support=1.000 dir=1.571
+  (3.78,-14.57)-(4.28,7.58) support=0.752 dir=1.548
+  (-0.22,-14.57)-(0.28,7.58) support=0.701 dir=1.548
+  (-3.72,0.03)-(5.18,-0.12) support=0.539 dir=3.125
+  (-3.72,-3.62)-(5.18,-3.77) support=0.459 dir=3.125
+  (-3.72,-7.27)-(5.18,-7.42) support=0.443 dir=3.125
+  (0.03,6.28)-(4.48,6.18) support=0.411 dir=3.119
+  (-3.72,4.03)-(5.18,3.88) support=0.275 dir=3.125
+  (-0.07,2.38)-(4.43,2.28) support=0.133 dir=3.119
+  #1: 20.14 m^2 (8057 cells)
+  #2: 20.05 m^2 (8018 cells)
+  #3: 10.57 m^2 (4229 cells)
+  #4: 13.27 m^2 (5307 cells)
+  #5: 10.33 m^2 (4130 cells)
+  #6: 15.47 m^2 (6187 cells)
+  #7: 8.03 m^2 (3210 cells)
+unassigned : 1400 cells (3.5% of free)
+segments : output/rose2_upstream/Virtual-ViMantic_House23/segments.png
+walls overlay : output/rose2_upstream/Virtual-ViMantic_House23/walls.png
+diagnostic : output/rose2_upstream/Virtual-ViMantic_House23/diagnostics/01_cleaned_map.png
+diagnostic : output/rose2_upstream/Virtual-ViMantic_House23/diagnostics/02_extended_lines.png
+diagnostic : output/rose2_upstream/Virtual-ViMantic_House23/diagnostics/03_labels_overlay.png

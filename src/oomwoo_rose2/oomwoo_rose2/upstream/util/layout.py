@@ -293,6 +293,50 @@ def create_polygon(cells, cells_out, cells_partial):
 	return cells_polygon, polygon_out, polygon_partial, centroid
 
 
+def remove_frame_fringes(
+	cells, polygons, frame_bounds, minimum_wall_support=0.9,
+	minimum_wall_span=0.6, maximum_area_ratio=0.15,
+):
+	"""Remove small frame-side cells behind a strong layout-spanning wall.
+
+	ROSE can infer an exterior wall inside a noisy free map margin. The free
+	contour still classifies both sides as inside, so the margin becomes a
+	spurious room. Keep this compatibility rule deliberately strict to avoid
+	discarding ordinary boundary rooms.
+	"""
+	xmin, ymin, xmax, ymax = frame_bounds
+	minimum_length = minimum_wall_span * min(xmax - xmin, ymax - ymin)
+	frame_tolerance = 1e-6
+	dropped = set()
+
+	for first in range(len(cells)):
+		for second in range(first + 1, len(cells)):
+			if not fc.adjacent(cells[first], cells[second]):
+				continue
+			for edge in fc.common_edge(cells[first], cells[second]):
+				wall_length = math.hypot(
+					edge.x2 - edge.x1, edge.y2 - edge.y1)
+				if edge.weight < minimum_wall_support or wall_length < minimum_length:
+					continue
+				first_area = polygons[first].area
+				second_area = polygons[second].area
+				if min(first_area, second_area) / max(first_area, second_area) > maximum_area_ratio:
+					continue
+				smaller = first if first_area < second_area else second
+				minx, miny, maxx, maxy = polygons[smaller].bounds
+				touches_frame = (
+					abs(minx - xmin) <= frame_tolerance
+					or abs(miny - ymin) <= frame_tolerance
+					or abs(maxx - xmax) <= frame_tolerance
+					or abs(maxy - ymax) <= frame_tolerance
+				)
+				if touches_frame:
+					dropped.add(smaller)
+
+	keep = [index for index in range(len(cells)) if index not in dropped]
+	return [cells[index] for index in keep], [polygons[index] for index in keep]
+
+
 def create_matrices(cells, sigma=0.00000125, val=0):
 	# sigma was 0.1
 	matrix_l = mtx.create_matrix_l(cells, sigma, val)
