@@ -2,6 +2,8 @@
 
 Status: **implemented and verified** on branch `ROSE2`.
 
+> **Update (2026-08-25): native rewrite.** The `oomwoo_rose2` wrapper package (vendored upstream code + temporary directories) has been replaced by a pure in-memory native engine inside `oomwoo_segmentation` (`engine/`), the custom `oomwoo_segmentation_interfaces` package by the standard-type `oomwoo_segmentation_msgs`, and the PyQt5 verification GUI (`oomwoo_cleaning_jobs_ui`) has been removed. The sections below remain as the historical record of the original wrapper migration; the package table reflects the current layout.
+
 ## Objective
 
 Replace the in-process cleaning-jobs room segmentation with a ROS 2 module seam. ROSE2 is the only production provider on this branch. There is no legacy implementation, fallback, or runtime provider switch.
@@ -10,11 +12,9 @@ Replace the in-process cleaning-jobs room segmentation with a ROS 2 module seam.
 
 | Package | License | Responsibility |
 | --- | --- | --- |
-| `oomwoo_segmentation_interfaces` | Apache-2.0 | Typed `SegmentRooms` action and label/mask/room/diagnostic messages |
-| `oomwoo_segmentation` | Apache-2.0 | Source-map identity and I/O, canonical models and validation, ROS conversions, action client, rendering, CLI |
-| `oomwoo_rose2` | GPL-3.0 | Pinned upstream ROSE + ROSE2 pipeline and ROS 2 action server |
+| `oomwoo_segmentation_msgs` | Apache-2.0 | Standard-type `SegmentRooms` action and room/wall messages |
+| `oomwoo_segmentation` | GPL-3.0 | Native ROSE + ROSE2 engine, Source-map identity and I/O, canonical models and validation, ROS conversions, action server/client, rendering, CLI |
 | `oomwoo_cleaning_jobs_core` | Apache-2.0 | Editable Regions, constraints, persistence, validation; no segmentation algorithm |
-| `oomwoo_cleaning_jobs_ui` | Apache-2.0 | Asynchronous action invocation and Region editing workflow |
 
 The action boundary allows another implementation package to replace ROSE2 without changing cleaning-jobs or the rendering tools. Provider-specific parameters stay on the provider node and do not leak into the common action.
 
@@ -38,7 +38,7 @@ The adapter preserves the upstream two-stage computation:
 2. ROSE2 Hough walls, line clustering/extension, edge and cell construction, affinity/DBSCAN clustering, and Shapely room polygons.
 3. Polygon rasterization and canonicalization back to the original source-grid coordinates.
 
-ROS 1 nodes, services, RViz integration, and pickled Python-object messages are not carried over. Modern-library compatibility changes and provenance are listed in `src/oomwoo_rose2/THIRD_PARTY.md`.
+ROS 1 nodes, services, RViz integration, and pickled Python-object messages are not carried over. Modern-library compatibility changes and provenance are listed in `src/oomwoo_segmentation/THIRD_PARTY.md`.
 
 ## Completed migration steps
 
@@ -51,7 +51,7 @@ ROS 1 nodes, services, RViz integration, and pickled Python-object messages are 
 - [x] Add deterministic test-only provider fakes for cleaning domain tests.
 - [x] Delete maximin/watershed/saddle/doorway implementations, tests, CLI, parameters, and demo.
 - [x] Update package manifests, entry points, README, and development documentation.
-- [x] Generate final and intermediate ROSE2 example images under `output/` (test inputs since moved to `src/oomwoo_rose2/test/maps/`).
+- [x] Generate final and intermediate ROSE2 example images under `output/` (test inputs since moved to `src/oomwoo_segmentation/test/maps/`).
 
 ## Verification
 
@@ -65,7 +65,6 @@ ROS 1 nodes, services, RViz integration, and pickled Python-object messages are 
 
 ## Remaining operational checks
 
-- Install dependencies from `src/oomwoo_rose2/requirements.txt` (or equivalent rosdep packages) in the deployment image.
-- Perform the real-map/real-robot GUI checklist in `src/oomwoo_cleaning_jobs_ui/docs/MANUAL_ACCEPTANCE.md`.
+- Install dependencies from `src/oomwoo_segmentation/requirements.txt` (or equivalent rosdep packages) in the deployment image.
 - Have the project license owner confirm the final GPLv3 distribution arrangement.
 - Treat optional `rooms_voronoi=true` as a separate acceptance target; the default and tested profile is `false`.

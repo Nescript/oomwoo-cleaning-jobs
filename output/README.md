@@ -1,6 +1,6 @@
 # ROSE2 docs 地图修复后验证
 
-Provider：`rose2 upstream-3a010b9e6bb2+oomwoo.4`
+Provider：`rose2 upstream-3a010b9e6bb2+oomwoo.4`（历史 wrapper 记录；当前分支的同名场景已由 `oomwoo_segmentation` 原生引擎重新验证，见 `output/demo/`、`output/ipa/`、`output/rose2_upstream/`）
 
 ## 本次修复
 
@@ -19,17 +19,17 @@ Provider：`rose2 upstream-3a010b9e6bb2+oomwoo.4`
 
 | 场景 | 原图 | 还原倍率 | 算法输入尺寸 |
 | --- | --- | ---: | ---: |
-| corridor4 | `src/oomwoo_rose2/test/maps/demo/corridor4.render.png` | 3 | 125×53 |
-| grid6_furniture | `src/oomwoo_rose2/test/maps/demo/grid6_furniture.render.png` | 3 | 94×63 |
-| living_room | `src/oomwoo_rose2/test/maps/demo/living_room.render.png` | 2 | 99×98 |
-| room3 | `src/oomwoo_rose2/test/maps/demo/room3.png` | 1 | 200×200 |
-| room4 | `src/oomwoo_rose2/test/maps/demo/room4.png` | 1 | 200×200 |
-| two_rooms | `src/oomwoo_rose2/test/maps/demo/two_rooms.render.png` | 1 | 100×80 |
+| corridor4 | `src/oomwoo_segmentation/test/maps/demo/corridor4.render.png` | 3 | 125×53 |
+| grid6_furniture | `src/oomwoo_segmentation/test/maps/demo/grid6_furniture.render.png` | 3 | 94×63 |
+| living_room | `src/oomwoo_segmentation/test/maps/demo/living_room.render.png` | 2 | 99×98 |
+| room3 | `src/oomwoo_segmentation/test/maps/demo/room3.png` | 1 | 200×200 |
+| room4 | `src/oomwoo_segmentation/test/maps/demo/room4.png` | 1 | 200×200 |
+| two_rooms | `src/oomwoo_segmentation/test/maps/demo/two_rooms.render.png` | 1 | 100×80 |
 
 重新生成命令（每次测试输出到 `output/`，见 docs/DEVELOPMENT.md）：
 
 ```bash
-python3 src/oomwoo_rose2/test/run_map_batch.py <图片> --embedded-scale <倍率> --output-root output
+python3 src/oomwoo_segmentation/test/run_map_batch.py <图片> --embedded-scale <倍率> --output-root output
 ```
 
 ## 修复后结果

@@ -1,6 +1,7 @@
 # Third-party provenance
 
-`oomwoo_rose2/oomwoo_rose2/upstream/` is derived from:
+`oomwoo_segmentation/oomwoo_segmentation/engine/` is a native in-memory port
+derived from:
 
 - Project: [aislabunimi/ROSE2](https://github.com/aislabunimi/ROSE2)
 - Commit: `3a010b9e6bb2477de3b5b46208ebfccd71dfafbf`
@@ -24,13 +25,14 @@ The original license is installed as `LICENSE`.
 - Introduce a hard wall barrier in affinity matrix generation (`hard_wall_threshold=0.40`), strictly preventing DBSCAN from merging topological cells across confirmed physical walls.
 - Add constrained geodesic wavefront propagation (`_geodesic_coverage`) to ensure 100% of reachable cleanable free cells are assigned to room regions without wall bleeding, while filtering sub-10px noise artifacts.
 - Reject a frame-side cell only when a wall has at least 0.9 support, spans at least 60% of the shorter layout dimension, and separates a frame-adjacent cell no larger than 15% of its neighbor. This prevents a noisy free map margin from becoming a room.
-- Added `oomwoo_rose2.engine` to adapt `SourceMap`/cleanable masks to the original two-stage ROSE + ROSE2 pipeline and canonical label grids.
-- Replaced ROS 1 publishers, services, pickled custom messages, and launch files with the typed `oomwoo_segmentation_interfaces/SegmentRooms` ROS 2 action.
+- Added `oomwoo_segmentation.engine` as a pure in-memory native port of the two-stage ROSE + ROSE2 pipeline operating directly on `SourceMap`/cleanable masks and producing canonical label grids; the earlier `oomwoo_rose2` wrapper package (vendored upstream code, temporary directories, logging shim) has been removed.
+- Replaced ROS 1 publishers, services, pickled custom messages, and launch files with the typed `oomwoo_segmentation_msgs/SegmentRooms` ROS 2 action (standard message types only).
+- Hough defaults (`min_line_length=5`, `max_line_gap=0`) reproduce the values that actually took effect upstream: the upstream positional `cv2.HoughLinesP` call maps the extra arguments to `(lines, minLineLength)`, leaving `maxLineGap` at 0.
 - Added deterministic label canonicalization and in-memory diagnostics.
 
 ## Test map fixtures
 
-`oomwoo_rose2/test/maps/rose2_upstream/` is a verbatim copy of the upstream
+`oomwoo_segmentation/test/maps/rose2_upstream/` is a verbatim copy of the upstream
 repository's `src/maps/` test maps at the same pinned commit (carmen,
 Freiburg_Building_079, Virtual, maps-nostre). Upstream's
 `Virtual/mapirlab.yaml` references a `mapirlab.pgm` that upstream never
