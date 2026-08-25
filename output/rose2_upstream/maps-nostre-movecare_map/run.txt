@@ -1,10 +1,11 @@
-map file : src/oomwoo_rose2/test/maps/rose2_upstream/maps-nostre/movecare_map.yaml
+map file : src/oomwoo_segmentation/test/maps/rose2_upstream/maps-nostre/movecare_map.yaml
 size     : 1088x3968 cells @ 0.02 m/cell
 origin   : (-5.0, -16.52, 0.0)
 identity : 8b0806d1a93e5d7f2624be01a483732d57153e57e946b5454a068464815b552b
 cells    : free 958648 (22.2%), occupied 32728, unknown 3325808
 base map : output/rose2_upstream/maps-nostre-movecare_map/source.render.png
-implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 52.30 s
 rooms : 28
 walls : 10
   (-2.67,3.41)-(-2.67,55.11) support=1.000 dir=1.571

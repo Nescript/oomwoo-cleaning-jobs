@@ -1,10 +1,11 @@
-map file : src/oomwoo_rose2/test/maps/rose2_upstream/Virtual/ViMantic_House20.yaml
+map file : src/oomwoo_segmentation/test/maps/rose2_upstream/Virtual/ViMantic_House20.yaml
 size     : 800x800 cells @ 0.05 m/cell
 origin   : (-20.0, -20.0, 0.0)
 identity : c22f1197eebaef74cf28f22d67305f81a5af8a3c798309b3c81d25611e4576ca
 cells    : free 8506 (1.3%), occupied 1351, unknown 630143
 base map : output/rose2_upstream/Virtual-ViMantic_House20/source.render.png
-implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 1.79 s
 rooms : 5
 walls : 12
   (-7.38,-2.88)-(-7.38,3.03) support=1.000 dir=1.571

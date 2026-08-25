@@ -1,0 +1,66 @@
+map file : src/oomwoo_segmentation/test/maps/ipa/NLB.png
+normalization : embedded_render_scale=1
+size     : 999x850 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : 11284e6d92aa66f747880272234b1aefb456d7758b87502d789cdda82501bf20
+cells    : free 498848 (58.7%), occupied 12204, unknown 338098
+base map : output/ipa/ipa-NLB/source.render.png
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 3.35 s
+rooms : 17
+walls : 32
+  (0.23,0.58)-(0.23,41.93) support=1.000 dir=1.571
+  (0.23,0.58)-(49.73,0.58) support=1.000 dir=0.000
+  (0.23,41.93)-(49.73,41.93) support=1.000 dir=0.000
+  (49.73,0.58)-(49.73,41.93) support=1.000 dir=1.571
+  (0.23,1.62)-(49.73,1.53) support=0.809 dir=3.140
+  (48.73,0.58)-(48.73,41.93) support=0.744 dir=1.571
+  (0.23,9.38)-(49.73,9.28) support=0.623 dir=3.140
+  (43.18,0.58)-(43.18,41.93) support=0.602 dir=1.571
+  (41.12,31.48)-(49.88,31.48) support=0.593 dir=0.000
+  (41.12,18.18)-(49.88,18.18) support=0.588 dir=0.000
+  (41.12,23.23)-(49.88,23.23) support=0.588 dir=0.000
+  (41.12,14.03)-(49.88,14.03) support=0.588 dir=0.000
+  (38.98,0.08)-(38.98,9.83) support=0.555 dir=1.571
+  (34.73,0.08)-(34.73,9.83) support=0.554 dir=1.571
+  (19.58,34.52)-(19.58,42.43) support=0.532 dir=1.571
+  (0.23,40.98)-(49.73,40.88) support=0.494 dir=3.140
+  (14.38,34.52)-(14.38,42.43) support=0.482 dir=1.571
+  (11.38,36.33)-(11.38,42.43) support=0.465 dir=1.571
+  (12.58,0.58)-(12.58,41.93) support=0.435 dir=1.571
+  (0.23,35.08)-(49.73,34.98) support=0.416 dir=3.140
+  (41.38,0.58)-(41.38,41.93) support=0.394 dir=1.571
+  (18.57,0.08)-(18.57,7.53) support=0.390 dir=1.571
+  (7.58,0.58)-(7.58,41.93) support=0.383 dir=1.571
+  (0.23,36.83)-(49.73,36.73) support=0.337 dir=3.140
+  (0.23,7.03)-(49.73,6.98) support=0.296 dir=3.141
+  (21.43,0.58)-(21.43,41.93) support=0.290 dir=1.571
+  (25.58,0.58)-(25.58,41.93) support=0.276 dir=1.571
+  (17.32,6.53)-(17.32,42.43) support=0.248 dir=1.571
+  (1.23,0.58)-(1.23,41.93) support=0.239 dir=1.571
+  (30.78,0.08)-(30.78,37.27) support=0.238 dir=1.571
+  (36.38,0.58)-(36.38,41.93) support=0.226 dir=1.571
+  (0.23,29.58)-(49.73,29.48) support=0.224 dir=3.140
+  #1: 21.47 m^2 (8586 cells)
+  #2: 19.70 m^2 (7880 cells)
+  #3: 39.76 m^2 (15905 cells)
+  #4: 23.04 m^2 (9215 cells)
+  #5: 68.49 m^2 (27396 cells)
+  #6: 18.98 m^2 (7591 cells)
+  #7: 462.92 m^2 (185169 cells)
+  #8: 20.63 m^2 (8251 cells)
+  #9: 25.29 m^2 (10116 cells)
+  #10: 351.67 m^2 (140669 cells)
+  #11: 41.78 m^2 (16713 cells)
+  #12: 21.52 m^2 (8607 cells)
+  #13: 24.77 m^2 (9908 cells)
+  #14: 25.87 m^2 (10346 cells)
+  #15: 47.85 m^2 (19139 cells)
+  #16: 10.40 m^2 (4158 cells)
+  #17: 22.99 m^2 (9197 cells)
+unassigned : 0 cells (0.0% of free)
+segments : output/ipa/ipa-NLB/segments.png
+walls overlay : output/ipa/ipa-NLB/walls.png
+diagnostic : output/ipa/ipa-NLB/diagnostics/01_cleaned_map.png
+diagnostic : output/ipa/ipa-NLB/diagnostics/02_extended_lines.png
+diagnostic : output/ipa/ipa-NLB/diagnostics/03_labels_overlay.png

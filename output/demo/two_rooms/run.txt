@@ -1,0 +1,27 @@
+map file : src/oomwoo_segmentation/test/maps/demo/two_rooms.render.png
+normalization : embedded_render_scale=1
+size     : 100x80 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : a92dc8550531f629eb0f2d9ac66ee9ed586f54fba58fc0b12e07669b6a05a2fb
+cells    : free 4490 (56.1%), occupied 334, unknown 3176
+base map : output/demo/two_rooms/source.render.png
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 0.04 s
+rooms : 2
+walls : 8
+  (0.03,0.03)-(0.03,3.93) support=1.000 dir=1.571
+  (0.03,0.03)-(4.53,0.03) support=1.000 dir=0.000
+  (4.53,0.03)-(4.53,3.93) support=1.000 dir=1.571
+  (0.23,0.03)-(0.23,3.93) support=0.887 dir=1.571
+  (3.53,0.03)-(3.53,3.93) support=0.875 dir=1.571
+  (1.53,0.03)-(1.53,3.93) support=0.738 dir=1.571
+  (0.03,3.83)-(4.53,3.73) support=0.722 dir=3.119
+  (0.03,0.28)-(4.53,0.18) support=0.633 dir=3.119
+  #1: 4.40 m^2 (1760 cells)
+  #2: 6.83 m^2 (2730 cells)
+unassigned : 0 cells (0.0% of free)
+segments : output/demo/two_rooms/segments.png
+walls overlay : output/demo/two_rooms/walls.png
+diagnostic : output/demo/two_rooms/diagnostics/01_cleaned_map.png
+diagnostic : output/demo/two_rooms/diagnostics/02_extended_lines.png
+diagnostic : output/demo/two_rooms/diagnostics/03_labels_overlay.png

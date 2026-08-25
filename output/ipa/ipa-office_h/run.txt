@@ -1,0 +1,48 @@
+map file : src/oomwoo_segmentation/test/maps/ipa/office_h.png
+normalization : embedded_render_scale=1
+size     : 1030x1028 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : 347ba0ba5998da15d333de2249cb9dea4823c972e7ba70565f31bc8254a64b31
+cells    : free 629701 (59.5%), occupied 10135, unknown 419004
+base map : output/ipa/ipa-office_h/source.render.png
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 3.37 s
+rooms : 12
+walls : 19
+  (0.33,0.28)-(0.33,51.12) support=1.000 dir=1.571
+  (0.33,0.28)-(51.18,0.28) support=1.000 dir=0.000
+  (0.33,51.12)-(51.18,51.12) support=1.000 dir=0.000
+  (51.18,0.28)-(51.18,51.12) support=1.000 dir=1.571
+  (1.38,0.28)-(1.38,51.12) support=0.959 dir=1.571
+  (50.18,0.28)-(50.18,51.12) support=0.959 dir=1.571
+  (0.33,1.23)-(51.18,1.33) support=0.957 dir=0.002
+  (0.33,50.08)-(51.18,50.18) support=0.957 dir=0.002
+  (0.33,37.48)-(51.18,37.58) support=0.772 dir=0.002
+  (0.33,13.83)-(51.18,13.93) support=0.730 dir=0.002
+  (37.73,19.93)-(50.43,19.93) support=0.642 dir=0.000
+  (31.88,0.03)-(31.88,14.38) support=0.578 dir=1.571
+  (19.62,0.03)-(19.62,14.38) support=0.576 dir=1.571
+  (13.53,0.03)-(13.53,14.38) support=0.552 dir=1.571
+  (26.12,0.03)-(26.12,14.38) support=0.551 dir=1.571
+  (9.88,0.28)-(9.88,51.12) support=0.353 dir=1.571
+  (41.62,0.28)-(41.62,51.12) support=0.353 dir=1.571
+  (0.33,25.68)-(51.18,25.73) support=0.318 dir=0.001
+  (37.98,0.28)-(37.98,51.12) support=0.267 dir=1.571
+  #1: 64.95 m^2 (25980 cells)
+  #2: 69.00 m^2 (27599 cells)
+  #3: 66.21 m^2 (26484 cells)
+  #4: 67.17 m^2 (26868 cells)
+  #5: 140.22 m^2 (56086 cells)
+  #6: 44.25 m^2 (17701 cells)
+  #7: 108.30 m^2 (43318 cells)
+  #8: 44.46 m^2 (17782 cells)
+  #9: 397.38 m^2 (158952 cells)
+  #10: 88.79 m^2 (35517 cells)
+  #11: 86.38 m^2 (34550 cells)
+  #12: 397.16 m^2 (158864 cells)
+unassigned : 0 cells (0.0% of free)
+segments : output/ipa/ipa-office_h/segments.png
+walls overlay : output/ipa/ipa-office_h/walls.png
+diagnostic : output/ipa/ipa-office_h/diagnostics/01_cleaned_map.png
+diagnostic : output/ipa/ipa-office_h/diagnostics/02_extended_lines.png
+diagnostic : output/ipa/ipa-office_h/diagnostics/03_labels_overlay.png

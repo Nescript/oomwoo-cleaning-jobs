@@ -1,0 +1,29 @@
+map file : src/oomwoo_segmentation/test/maps/ipa/lab_ipa.png
+normalization : embedded_render_scale=1
+size     : 864x768 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : cc9d145782273436499db677f202cde96876e084d0b128ba6db0d53551dc1091
+cells    : free 121861 (18.4%), occupied 541691, unknown 0
+base map : output/ipa/ipa-lab_ipa/source.render.png
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 268.06 s
+rooms : 3
+walls : 9
+  (0.03,0.03)-(0.03,38.33) support=1.000 dir=1.571
+  (0.03,0.03)-(43.12,0.03) support=1.000 dir=0.000
+  (6.38,38.33)-(40.83,0.03) support=1.000 dir=2.303
+  (43.12,3.58)-(0.03,3.68) support=1.000 dir=3.139
+  (0.03,1.83)-(43.12,1.73) support=0.999 dir=3.139
+  (0.03,8.88)-(43.12,8.78) support=0.348 dir=3.139
+  (0.03,34.23)-(30.78,0.03) support=0.279 dir=2.303
+  (26.93,2.02)-(28.73,0.03) support=0.233 dir=2.304
+  (17.38,9.12)-(25.53,0.03) support=0.202 dir=2.301
+  #1: 0.24 m^2 (95 cells)
+  #2: 86.27 m^2 (34509 cells)
+  #3: 218.12 m^2 (87249 cells)
+unassigned : 0 cells (0.0% of free)
+segments : output/ipa/ipa-lab_ipa/segments.png
+walls overlay : output/ipa/ipa-lab_ipa/walls.png
+diagnostic : output/ipa/ipa-lab_ipa/diagnostics/01_cleaned_map.png
+diagnostic : output/ipa/ipa-lab_ipa/diagnostics/02_extended_lines.png
+diagnostic : output/ipa/ipa-lab_ipa/diagnostics/03_labels_overlay.png

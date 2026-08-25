@@ -1,10 +1,11 @@
-map file : src/oomwoo_rose2/test/maps/rose2_upstream/carmen/ubremen-cartesium.yaml
+map file : src/oomwoo_segmentation/test/maps/rose2_upstream/carmen/ubremen-cartesium.yaml
 size     : 1472x864 cells @ 0.02 m/cell
 origin   : (-5.0, -16.52, 0.0)
 identity : b34e47211d0c816cd3969dd60f637623f131a77a43565e741f2ec139faf241f9
 cells    : free 200046 (15.7%), occupied 12540, unknown 1059222
 base map : output/rose2_upstream/carmen-ubremen-cartesium/source.render.png
-implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 6.09 s
 rooms : 10
 walls : 13
   (1.71,-10.11)-(1.71,-1.05) support=1.000 dir=1.571

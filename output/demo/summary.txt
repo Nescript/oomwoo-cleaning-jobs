@@ -1,0 +1,6 @@
+corridor4: 5 rooms, 7 walls, 0 unassigned (0.0%), 0.1s
+grid6_furniture: 6 rooms, 6 walls, 0 unassigned (0.0%), 0.0s
+living_room: 1 rooms, 5 walls, 0 unassigned (0.0%), 0.2s
+room3: 6 rooms, 10 walls, 0 unassigned (0.0%), 0.2s
+room4: 5 rooms, 10 walls, 0 unassigned (0.0%), 0.2s
+two_rooms: 2 rooms, 8 walls, 0 unassigned (0.0%), 0.0s

@@ -1,0 +1,16 @@
+map file : src/oomwoo_segmentation/test/maps/ipa/Freiburg52_scan.png
+normalization : embedded_render_scale=1
+size     : 643x354 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : 0c774a034e052996d423b2517e1192f72cdbb80781ff043f0de546c56bac8917
+cells    : free 142382 (62.6%), occupied 1, unknown 85239
+base map : output/ipa/ipa-Freiburg52_scan/source.render.png
+error     : segmentation failed: no structural wall segments detected
+Traceback (most recent call last):
+  File "/ros_ws/src/oomwoo-cleaning-jobs/src/oomwoo_segmentation/test/run_map_batch.py", line 130, in _run_one
+    result = engine.segment(source, include_diagnostics=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/ros_ws/src/oomwoo-cleaning-jobs/src/oomwoo_segmentation/oomwoo_segmentation/engine/engine.py", line 127, in segment
+    raise SegmentationError('no structural wall segments detected')
+oomwoo_segmentation.models.SegmentationError: no structural wall segments detected
+

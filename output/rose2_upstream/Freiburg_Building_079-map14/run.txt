@@ -1,10 +1,11 @@
-map file : src/oomwoo_rose2/test/maps/rose2_upstream/Freiburg_Building_079/map14.yaml
+map file : src/oomwoo_segmentation/test/maps/rose2_upstream/Freiburg_Building_079/map14.yaml
 size     : 1152x736 cells @ 0.05 m/cell
 origin   : (-100.0, -100.0, 0.0)
 identity : 6e75591eca567194ce95f296fee8cd18f8269ee4bdac8e60309e08db0ddc2837
 cells    : free 158970 (18.7%), occupied 15679, unknown 673223
 base map : output/rose2_upstream/Freiburg_Building_079-map14/source.render.png
-implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 4.30 s
 rooms : 18
 walls : 17
   (-93.42,-90.28)-(-93.42,-72.67) support=1.000 dir=1.571

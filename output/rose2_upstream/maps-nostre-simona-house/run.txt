@@ -1,10 +1,11 @@
-map file : src/oomwoo_rose2/test/maps/rose2_upstream/maps-nostre/simona-house.yaml
+map file : src/oomwoo_segmentation/test/maps/rose2_upstream/maps-nostre/simona-house.yaml
 size     : 1024x1056 cells @ 0.02 m/cell
 origin   : (-15.88, -5.0, 0.0)
 identity : 0a0b6733a0c1c60048c31163a23e140d3ca9fea9e992f181e922e659e2960f7d
 cells    : free 72509 (6.7%), occupied 5788, unknown 1003047
 base map : output/rose2_upstream/maps-nostre-simona-house/source.render.png
-implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 3.28 s
 rooms : 5
 walls : 16
   (-4.91,-2.75)-(-4.91,6.35) support=1.000 dir=1.571

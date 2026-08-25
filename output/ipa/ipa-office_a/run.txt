@@ -1,0 +1,33 @@
+map file : src/oomwoo_segmentation/test/maps/ipa/office_a.png
+normalization : embedded_render_scale=1
+size     : 1194x685 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : 6125989bd9a7a4c8d97e288390038ee694b1ff873980486e47142e9a98e39554
+cells    : free 611807 (74.8%), occupied 3383, unknown 202700
+base map : output/ipa/ipa-office_a/source.render.png
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 3.87 s
+rooms : 6
+walls : 10
+  (1.18,0.03)-(1.18,34.18) support=1.000 dir=1.571
+  (1.18,0.03)-(58.53,0.03) support=1.000 dir=0.000
+  (58.53,0.03)-(58.53,34.18) support=1.000 dir=1.571
+  (57.53,0.03)-(57.53,34.18) support=0.946 dir=1.571
+  (19.18,0.03)-(19.18,34.18) support=0.585 dir=1.571
+  (27.18,26.03)-(27.18,34.18) support=0.469 dir=1.571
+  (39.98,0.03)-(39.98,34.18) support=0.276 dir=1.571
+  (34.98,0.03)-(34.98,34.18) support=0.266 dir=1.571
+  (1.18,12.58)-(58.53,12.68) support=0.235 dir=0.002
+  (1.18,26.48)-(58.53,26.58) support=0.227 dir=0.002
+  #1: 168.49 m^2 (67397 cells)
+  #2: 393.80 m^2 (157519 cells)
+  #3: 602.81 m^2 (241122 cells)
+  #4: 270.78 m^2 (108310 cells)
+  #5: 46.23 m^2 (18490 cells)
+  #6: 47.42 m^2 (18969 cells)
+unassigned : 0 cells (0.0% of free)
+segments : output/ipa/ipa-office_a/segments.png
+walls overlay : output/ipa/ipa-office_a/walls.png
+diagnostic : output/ipa/ipa-office_a/diagnostics/01_cleaned_map.png
+diagnostic : output/ipa/ipa-office_a/diagnostics/02_extended_lines.png
+diagnostic : output/ipa/ipa-office_a/diagnostics/03_labels_overlay.png

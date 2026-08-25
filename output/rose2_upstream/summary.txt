@@ -1,2 +1,21 @@
-maps-nostre-movecare_map: 28 rooms, 10 walls, 0 unassigned (0.0%)
-maps-nostre-simona-house: 5 rooms, 16 walls, 0 unassigned (0.0%)
+Freiburg_Building_079-map10: 15 rooms, 14 walls, 0 unassigned (0.0%), 4.0s
+Freiburg_Building_079-map11: 19 rooms, 17 walls, 0 unassigned (0.0%), 4.2s
+Freiburg_Building_079-map12: 18 rooms, 16 walls, 0 unassigned (0.0%), 4.1s
+Freiburg_Building_079-map13: 16 rooms, 16 walls, 0 unassigned (0.0%), 3.8s
+Freiburg_Building_079-map14: 18 rooms, 17 walls, 0 unassigned (0.0%), 4.3s
+Freiburg_Building_079-map15: 26 rooms, 19 walls, 0 unassigned (0.0%), 4.9s
+Freiburg_Building_079-map2: 4 rooms, 6 walls, 0 unassigned (0.0%), 5.2s
+Freiburg_Building_079-map3: 5 rooms, 7 walls, 0 unassigned (0.0%), 4.0s
+Freiburg_Building_079-map4: 4 rooms, 7 walls, 0 unassigned (0.0%), 3.8s
+Freiburg_Building_079-map5: 9 rooms, 9 walls, 0 unassigned (0.0%), 3.8s
+Freiburg_Building_079-map6: 10 rooms, 10 walls, 0 unassigned (0.0%), 3.8s
+Freiburg_Building_079-map7: 14 rooms, 12 walls, 0 unassigned (0.0%), 3.7s
+Freiburg_Building_079-map8: 15 rooms, 15 walls, 0 unassigned (0.0%), 3.8s
+Freiburg_Building_079-map9: 13 rooms, 13 walls, 0 unassigned (0.0%), 4.0s
+Virtual-ViMantic_House20: 5 rooms, 12 walls, 0 unassigned (0.0%), 1.8s
+Virtual-ViMantic_House23: 12 rooms, 12 walls, 0 unassigned (0.0%), 1.8s
+Virtual-ViMantic_House30: 6 rooms, 12 walls, 0 unassigned (0.0%), 1.9s
+Virtual-mapirlab: LOAD FAILED (/ros_ws/src/oomwoo-cleaning-jobs/src/oomwoo_segmentation/test/maps/rose2_upstream/Virtual/mapirlab.pgm: failed to read image)
+carmen-ubremen-cartesium: 10 rooms, 13 walls, 0 unassigned (0.0%), 6.1s
+maps-nostre-movecare_map: 28 rooms, 10 walls, 0 unassigned (0.0%), 52.3s
+maps-nostre-simona-house: 5 rooms, 16 walls, 0 unassigned (0.0%), 3.3s

@@ -1,0 +1,57 @@
+map file : src/oomwoo_segmentation/test/maps/ipa/lab_a.png
+normalization : embedded_render_scale=1
+size     : 645x573 cells @ 0.05 m/cell
+origin   : (0.0, 0.0, 0.0)
+identity : f50953b931d4386b61f5fdd495ad210a315b75ac731a1b4064de84789365cae4
+cells    : free 175004 (47.4%), occupied 12596, unknown 181985
+base map : output/ipa/ipa-lab_a/source.render.png
+implementation : oomwoo_segmentation native-1.0.0
+runtime : 1.48 s
+rooms : 19
+walls : 21
+  (0.62,0.43)-(0.62,28.58) support=1.000 dir=1.571
+  (0.62,0.43)-(31.28,0.43) support=1.000 dir=0.000
+  (31.28,0.43)-(31.28,28.58) support=1.000 dir=1.571
+  (0.62,1.48)-(31.28,1.58) support=0.615 dir=0.003
+  (0.62,14.88)-(31.28,14.98) support=0.584 dir=0.003
+  (0.62,7.08)-(31.28,7.18) support=0.576 dir=0.003
+  (0.62,23.88)-(31.28,23.98) support=0.560 dir=0.003
+  (0.62,22.58)-(31.28,22.62) support=0.545 dir=0.002
+  (1.73,0.43)-(1.73,28.58) support=0.488 dir=1.571
+  (0.62,27.62)-(31.28,27.73) support=0.432 dir=0.003
+  (3.28,0.43)-(3.28,28.58) support=0.402 dir=1.571
+  (14.33,14.43)-(14.33,24.43) support=0.395 dir=1.571
+  (0.62,5.38)-(31.28,5.48) support=0.378 dir=0.003
+  (7.08,0.43)-(7.08,28.58) support=0.370 dir=1.571
+  (3.03,18.43)-(10.33,18.43) support=0.341 dir=0.000
+  (1.43,11.18)-(17.07,11.23) support=0.333 dir=0.003
+  (12.53,0.43)-(12.53,28.58) support=0.294 dir=1.571
+  (16.82,0.43)-(16.82,28.58) support=0.253 dir=1.571
+  (27.68,0.43)-(27.68,28.58) support=0.242 dir=1.571
+  (10.12,0.43)-(10.12,28.58) support=0.223 dir=1.571
+  (18.93,1.03)-(18.93,28.18) support=0.151 dir=1.571
+  #1: 11.97 m^2 (4788 cells)
+  #2: 10.80 m^2 (4318 cells)
+  #3: 6.73 m^2 (2691 cells)
+  #4: 18.19 m^2 (7275 cells)
+  #5: 9.15 m^2 (3661 cells)
+  #6: 13.50 m^2 (5398 cells)
+  #7: 15.93 m^2 (6370 cells)
+  #8: 9.39 m^2 (3755 cells)
+  #9: 47.47 m^2 (18989 cells)
+  #10: 99.82 m^2 (39927 cells)
+  #11: 11.57 m^2 (4627 cells)
+  #12: 10.13 m^2 (4053 cells)
+  #13: 68.35 m^2 (27340 cells)
+  #14: 34.21 m^2 (13684 cells)
+  #15: 5.34 m^2 (2134 cells)
+  #16: 15.65 m^2 (6259 cells)
+  #17: 24.35 m^2 (9741 cells)
+  #18: 9.10 m^2 (3638 cells)
+  #19: 15.86 m^2 (6343 cells)
+unassigned : 0 cells (0.0% of free)
+segments : output/ipa/ipa-lab_a/segments.png
+walls overlay : output/ipa/ipa-lab_a/walls.png
+diagnostic : output/ipa/ipa-lab_a/diagnostics/01_cleaned_map.png
+diagnostic : output/ipa/ipa-lab_a/diagnostics/02_extended_lines.png
+diagnostic : output/ipa/ipa-lab_a/diagnostics/03_labels_overlay.png

@@ -1,0 +1,8 @@
+ipa-Freiburg52_scan: SEGMENTATION FAILED (no structural wall segments detected)
+ipa-NLB: 17 rooms, 32 walls, 0 unassigned (0.0%), 3.3s
+ipa-lab_a: 19 rooms, 21 walls, 0 unassigned (0.0%), 1.5s
+ipa-lab_d_scan_furnitures: 13 rooms, 16 walls, 0 unassigned (0.0%), 2.2s
+ipa-lab_ipa: 3 rooms, 9 walls, 0 unassigned (0.0%), 268.1s
+ipa-office_a: 6 rooms, 10 walls, 0 unassigned (0.0%), 3.9s
+ipa-office_a_furnitures: 6 rooms, 10 walls, 0 unassigned (0.0%), 3.6s
+ipa-office_h: 12 rooms, 19 walls, 0 unassigned (0.0%), 3.4s
