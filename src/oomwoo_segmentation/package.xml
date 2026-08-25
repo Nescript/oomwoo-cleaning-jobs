@@ -3,14 +3,19 @@
 <package format="3">
   <name>oomwoo_segmentation</name>
   <version>0.1.0</version>
-  <description>Algorithm-neutral room segmentation client, validation, map I/O, and rendering.</description>
+  <description>Native room segmentation engine, Action server, and visualization tools.</description>
   <maintainer email="dev@example.com">oomwoo</maintainer>
-  <license>Apache-2.0</license>
+  <license>GPL-3.0-only</license>
 
+  <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
-  <exec_depend>oomwoo_segmentation_interfaces</exec_depend>
+  <exec_depend>oomwoo_segmentation_msgs</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>python3-shapely</exec_depend>
+  <exec_depend>python3-skimage</exec_depend>
+  <exec_depend>python3-sklearn</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>

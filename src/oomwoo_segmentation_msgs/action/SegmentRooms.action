@@ -1,0 +1,25 @@
+# Goal
+nav_msgs/OccupancyGrid map
+sensor_msgs/Image cleanable_mask
+bool include_diagnostics
+
+---
+# Result
+uint8 STATUS_SUCCESS = 0
+uint8 STATUS_INVALID_REQUEST = 1
+uint8 STATUS_ALGORITHM_FAILED = 2
+uint8 STATUS_CANCELLED = 3
+
+uint8 status
+string message
+string implementation_version
+
+sensor_msgs/Image labels
+Room[] rooms
+WallSegment[] walls
+sensor_msgs/Image[] diagnostics
+
+---
+# Feedback
+string stage
+float32 progress

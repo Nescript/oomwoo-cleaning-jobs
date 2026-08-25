@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import math
+from typing import List, Optional, Sequence, Tuple
 
 import cv2
+from geometry_msgs.msg import Point, Point32, Polygon
 import numpy as np
 from nav_msgs.msg import OccupancyGrid
-from oomwoo_segmentation_interfaces.msg import (
-    DiagnosticImage as DiagnosticImageMsg,
-    LabelGrid,
-    MaskGrid,
-    Room,
-    WallSegment as WallSegmentMsg,
-)
-from sensor_msgs.msg import CompressedImage
+from oomwoo_segmentation_msgs.msg import Room, WallSegment as WallSegmentMsg
+from sensor_msgs.msg import Image
 
 from .models import CandidateRegion, DiagnosticImage, SegmentationResult, WallSegment
 from .source_map import SourceMap
@@ -22,6 +18,7 @@ from .validation import effective_cleanable_mask
 
 
 def source_map_from_occupancy_grid(message: OccupancyGrid) -> SourceMap:
+    """Reconstruct a SourceMap from a ROS 2 OccupancyGrid."""
     info = message.info
     width, height = int(info.width), int(info.height)
     data = np.asarray(message.data, dtype=np.int8)
@@ -44,6 +41,7 @@ def occupancy_grid_from_source_map(
     *,
     frame_id: str = 'map',
 ) -> OccupancyGrid:
+    """Create a ROS 2 OccupancyGrid from a SourceMap."""
     message = OccupancyGrid()
     message.header.frame_id = frame_id
     message.info.resolution = source_map.resolution
@@ -58,58 +56,85 @@ def occupancy_grid_from_source_map(
     return message
 
 
-def mask_grid_from_array(
+def image_from_mask(
     mask: np.ndarray,
-    source_map: SourceMap,
     *,
     frame_id: str = 'map',
-) -> MaskGrid:
-    mask = np.asarray(mask, dtype=bool)
-    if mask.shape != source_map.cells.shape:
-        raise ValueError('mask shape does not match source map')
-    message = MaskGrid()
-    message.header.frame_id = frame_id
-    message.info = occupancy_grid_from_source_map(source_map, frame_id=frame_id).info
-    message.data = mask.reshape(-1).astype(np.uint8).tolist()
-    return message
+) -> Image:
+    """Convert 2D boolean mask to sensor_msgs/Image (mono8)."""
+    mask_u8 = (np.asarray(mask, dtype=bool).astype(np.uint8) * 255)
+    msg = Image()
+    msg.header.frame_id = frame_id
+    msg.height, msg.width = mask_u8.shape
+    msg.encoding = 'mono8'
+    msg.is_bigendian = False
+    msg.step = mask_u8.shape[1]
+    msg.data = mask_u8.tobytes()
+    return msg
 
 
-def array_from_mask_grid(message: MaskGrid, source_map: SourceMap) -> np.ndarray:
-    if (int(message.info.width), int(message.info.height)) != (
-        source_map.width, source_map.height
-    ):
-        raise ValueError('mask dimensions do not match source map')
-    data = np.asarray(message.data, dtype=np.uint8)
-    if data.size != source_map.width * source_map.height:
-        raise ValueError('mask data length does not match width * height')
-    return data.reshape(source_map.cells.shape).astype(bool)
+def array_from_mask_image(message: Image) -> np.ndarray:
+    """Convert sensor_msgs/Image (mono8) to 2D boolean mask."""
+    if not message.data:
+        return np.zeros((0, 0), dtype=bool)
+    arr = np.frombuffer(message.data, dtype=np.uint8).reshape((message.height, message.width))
+    return arr > 0
+
+
+def image_from_labels(
+    labels: np.ndarray,
+    *,
+    frame_id: str = 'map',
+) -> Image:
+    """Convert 2D int32 label grid to sensor_msgs/Image (32SC1)."""
+    labels_i32 = np.asarray(labels, dtype=np.int32)
+    msg = Image()
+    msg.header.frame_id = frame_id
+    msg.height, msg.width = labels_i32.shape
+    msg.encoding = '32SC1'
+    msg.is_bigendian = False
+    msg.step = labels_i32.shape[1] * 4
+    msg.data = labels_i32.tobytes()
+    return msg
+
+
+def array_from_label_image(message: Image) -> np.ndarray:
+    """Convert sensor_msgs/Image (32SC1) to 2D int32 label array."""
+    if not message.data:
+        return np.zeros((0, 0), dtype=np.int32)
+    return np.frombuffer(message.data, dtype=np.int32).reshape((message.height, message.width))
 
 
 def walls_to_ros_messages(
-    walls: tuple[WallSegment, ...],
-) -> list[WallSegmentMsg]:
-    messages: list[WallSegmentMsg] = []
+    walls: Sequence[WallSegment],
+) -> List[WallSegmentMsg]:
+    """Convert internal WallSegment objects to ROS WallSegment messages."""
+    messages: List[WallSegmentMsg] = []
     for wall in walls:
-        message = WallSegmentMsg()
-        message.x1, message.y1 = wall.x1, wall.y1
-        message.x2, message.y2 = wall.x2, wall.y2
-        message.support = wall.support
-        message.direction_rad = wall.direction_rad
-        messages.append(message)
+        msg = WallSegmentMsg()
+        msg.start.x, msg.start.y, msg.start.z = wall.x1, wall.y1, 0.0
+        msg.end.x, msg.end.y, msg.end.z = wall.x2, wall.y2, 0.0
+        msg.support = float(wall.support)
+        msg.direction = float(wall.direction_rad)
+        messages.append(msg)
     return messages
 
 
 def walls_from_ros_messages(
-    messages: list[WallSegmentMsg],
-) -> tuple[WallSegment, ...]:
-    return tuple(WallSegment(
-        x1=float(message.x1),
-        y1=float(message.y1),
-        x2=float(message.x2),
-        y2=float(message.y2),
-        support=float(message.support),
-        direction_rad=float(message.direction_rad),
-    ) for message in messages)
+    messages: Sequence[WallSegmentMsg],
+) -> Tuple[WallSegment, ...]:
+    """Convert ROS WallSegment messages to internal WallSegment objects."""
+    return tuple(
+        WallSegment(
+            x1=float(msg.start.x),
+            y1=float(msg.start.y),
+            x2=float(msg.end.x),
+            y2=float(msg.end.y),
+            support=float(msg.support),
+            direction_rad=float(msg.direction),
+        )
+        for msg in messages
+    )
 
 
 def result_to_ros_messages(
@@ -117,70 +142,93 @@ def result_to_ros_messages(
     source_map: SourceMap,
     *,
     frame_id: str = 'map',
-) -> tuple[LabelGrid, list[Room], list[WallSegmentMsg], list[DiagnosticImageMsg]]:
-    grid = LabelGrid()
-    grid.header.frame_id = frame_id
-    grid.info = occupancy_grid_from_source_map(source_map, frame_id=frame_id).info
-    grid.data = result.labels.reshape(-1).astype(np.int32).tolist()
+) -> Tuple[Image, List[Room], List[WallSegmentMsg], List[Image]]:
+    """Convert SegmentationResult to ROS messages."""
+    labels_image = image_from_labels(result.labels, frame_id=frame_id)
 
-    rooms: list[Room] = []
+    rooms: List[Room] = []
     for region in result.regions:
         room = Room()
-        room.label = region.label
-        room.cell_count = region.cell_count
-        room.area_m2 = region.area_m2
+        room.id = int(region.label)
+        room.area_m2 = float(region.area_m2)
+
+        # Compute centroid from mask
+        mask = (result.labels == region.label)
+        r_indices, c_indices = np.nonzero(mask)
+        if r_indices.size > 0:
+            mean_c = float(np.mean(c_indices))
+            mean_r = float(np.mean(r_indices))
+            mx, my = source_map.map_frame_from_pixel(mean_c, mean_r)
+            room.centroid.x = mx
+            room.centroid.y = my
+            room.centroid.z = 0.0
+
+            # Contour boundary in map frame
+            mask_u8 = mask.astype(np.uint8) * 255
+            contours, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                poly = Polygon()
+                for pt in contours[0]:
+                    px, py = float(pt[0][0]), float(pt[0][1])
+                    wx, wy = source_map.map_frame_from_pixel(px, py)
+                    p32 = Point32()
+                    p32.x, p32.y, p32.z = wx, wy, 0.0
+                    poly.points.append(p32)
+                room.boundary = poly
+
         rooms.append(room)
 
-    diagnostics: list[DiagnosticImageMsg] = []
+    walls = walls_to_ros_messages(result.walls)
+
+    diagnostics: List[Image] = []
     for item in result.diagnostics:
-        ok, encoded = cv2.imencode('.png', item.image)
-        if not ok:
-            raise ValueError(f'failed to encode diagnostic image {item.stage!r}')
-        compressed = CompressedImage()
-        compressed.header.frame_id = frame_id
-        compressed.format = 'png'
-        compressed.data = encoded.tobytes()
-        message = DiagnosticImageMsg()
-        message.stage = item.stage
-        message.image = compressed
-        diagnostics.append(message)
-    return grid, rooms, walls_to_ros_messages(result.walls), diagnostics
+        bgr = item.image
+        diag_msg = Image()
+        diag_msg.header.frame_id = item.stage
+        diag_msg.height, diag_msg.width = bgr.shape[:2]
+        diag_msg.encoding = 'bgr8'
+        diag_msg.is_bigendian = False
+        diag_msg.step = bgr.shape[1] * 3
+        diag_msg.data = bgr.tobytes()
+        diagnostics.append(diag_msg)
+
+    return labels_image, rooms, walls, diagnostics
 
 
 def result_from_ros_messages(
-    labels: LabelGrid,
-    rooms: list[Room],
-    walls: list[WallSegmentMsg],
-    diagnostics: list[DiagnosticImageMsg],
+    labels_image: Image,
+    rooms: Sequence[Room],
+    walls: Sequence[WallSegmentMsg],
+    diagnostics: Sequence[Image],
     source_map: SourceMap,
-    cleanable_mask: np.ndarray | None,
+    cleanable_mask: Optional[np.ndarray],
     implementation_id: str,
     implementation_version: str,
 ) -> SegmentationResult:
-    data = np.asarray(labels.data, dtype=np.int32)
-    if data.size != source_map.width * source_map.height:
-        raise ValueError('label data length does not match width * height')
+    """Reconstruct a SegmentationResult from ROS messages."""
+    labels = array_from_label_image(labels_image)
     cleanable = effective_cleanable_mask(source_map, cleanable_mask)
-    regions = tuple(CandidateRegion(
-        label=int(room.label),
-        cell_count=int(room.cell_count),
-        area_m2=float(room.area_m2),
-    ) for room in rooms)
-    decoded: list[DiagnosticImage] = []
-    for item in diagnostics:
-        image = cv2.imdecode(
-            np.frombuffer(bytes(item.image.data), dtype=np.uint8),
-            cv2.IMREAD_COLOR,
-        )
-        if image is None:
-            raise ValueError(f'failed to decode diagnostic image {item.stage!r}')
-        decoded.append(DiagnosticImage(stage=item.stage, image=image))
+
+    regions: List[CandidateRegion] = []
+    for room in rooms:
+        cell_count = int(np.count_nonzero(labels == room.id))
+        regions.append(CandidateRegion(
+            label=room.id,
+            cell_count=cell_count,
+            area_m2=float(room.area_m2),
+        ))
+
+    diag_images: List[DiagnosticImage] = []
+    for d_msg in diagnostics:
+        bgr = np.frombuffer(d_msg.data, dtype=np.uint8).reshape((d_msg.height, d_msg.width, 3))
+        diag_images.append(DiagnosticImage(d_msg.header.frame_id, bgr))
+
     return SegmentationResult(
-        labels=np.ascontiguousarray(data.reshape(source_map.cells.shape)),
-        regions=regions,
+        labels=labels,
+        regions=tuple(regions),
         cleanable_mask=cleanable,
         implementation_id=implementation_id,
         implementation_version=implementation_version,
         walls=walls_from_ros_messages(walls),
-        diagnostics=tuple(decoded),
+        diagnostics=tuple(diag_images),
     )

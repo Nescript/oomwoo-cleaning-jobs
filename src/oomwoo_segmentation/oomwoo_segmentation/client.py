@@ -1,6 +1,8 @@
-"""ROS 2 action client for any compatible room-segmentation provider."""
+"""ROS 2 action client for room-segmentation providers."""
 
 from __future__ import annotations
+
+from typing import Optional
 
 import numpy as np
 import rclpy
@@ -8,11 +10,11 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.task import Future
 
-from oomwoo_segmentation_interfaces.action import SegmentRooms
+from oomwoo_segmentation_msgs.action import SegmentRooms
 
 from .models import SegmentationError, SegmentationResult
 from .ros_conversions import (
-    mask_grid_from_array,
+    image_from_mask,
     occupancy_grid_from_source_map,
     result_from_ros_messages,
 )
@@ -36,7 +38,7 @@ class RoomSegmentationActionClient(Node):
     def segment_async(
         self,
         source_map: SourceMap,
-        cleanable_mask: np.ndarray | None = None,
+        cleanable_mask: Optional[np.ndarray] = None,
         *,
         include_diagnostics: bool = False,
         server_timeout_sec: float = 10.0,
@@ -48,9 +50,8 @@ class RoomSegmentationActionClient(Node):
 
         goal = SegmentRooms.Goal()
         goal.map = occupancy_grid_from_source_map(source_map)
-        goal.use_cleanable_mask = cleanable_mask is not None
         if cleanable_mask is not None:
-            goal.cleanable_mask = mask_grid_from_array(cleanable_mask, source_map)
+            goal.cleanable_mask = image_from_mask(cleanable_mask)
         goal.include_diagnostics = include_diagnostics
 
         sent = self._client.send_goal_async(goal)
@@ -63,7 +64,7 @@ class RoomSegmentationActionClient(Node):
                 self._goal_handle = handle
                 received = handle.get_result_async()
                 received.add_done_callback(result_response)
-            except Exception as exc:  # rclpy callbacks must forward failures
+            except Exception as exc:
                 completed.set_exception(exc)
 
         def result_response(done: Future) -> None:
@@ -78,7 +79,7 @@ class RoomSegmentationActionClient(Node):
                     list(response.diagnostics),
                     source_map,
                     cleanable_mask,
-                    response.implementation_id,
+                    'oomwoo_segmentation',
                     response.implementation_version,
                 )
                 validate_result(result, source_map)
@@ -91,7 +92,7 @@ class RoomSegmentationActionClient(Node):
         sent.add_done_callback(goal_response)
         return completed
 
-    def cancel_async(self) -> Future | None:
+    def cancel_async(self) -> Optional[Future]:
         if self._goal_handle is None:
             return None
         return self._goal_handle.cancel_goal_async()
@@ -99,13 +100,13 @@ class RoomSegmentationActionClient(Node):
 
 def segment_once(
     source_map: SourceMap,
-    cleanable_mask: np.ndarray | None = None,
+    cleanable_mask: Optional[np.ndarray] = None,
     *,
     action_name: str = '/room_segmentation/segment',
     include_diagnostics: bool = False,
     timeout_sec: float = 120.0,
 ) -> SegmentationResult:
-    """Blocking convenience for command-line tools, not GUI event loops."""
+    """Blocking convenience for command-line tools."""
     owns_context = not rclpy.ok()
     if owns_context:
         rclpy.init()
