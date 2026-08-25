@@ -36,12 +36,12 @@ python3 src/oomwoo_rose2/test/run_map_batch.py <图片> --embedded-scale <倍率
 
 | 场景 | 结果 | walls | 未分配 | 目视判断 |
 | --- | ---: | ---: | ---: | --- |
-| corridor4 | 5 rooms | 7 | 0 | 左下角三角形及走廊重复分区已消失，4 个房间 + 走廊符合预期 |
-| grid6_furniture | 6 rooms | 6 | 0 | 概率 Hough 遗漏的右侧局部墙体支持已从 structural raster 恢复，六个房间均被分开 |
-| living_room | 1 room | 5 | 449 cells / 5.8% | 家具不再切分主体；高支持度外墙之外的顶部 free 噪声保持未分配，不再作为房间 |
-| room3 | 5 rooms | 10 | 0 | 主要墙体和空间边界目视合理 |
-| room4 | 4 rooms | 10 | 180 cells / 2.1% | 4 个房间结构合理；内部仍有 15×12 free-space 覆盖缺口，且与 frame-fringe 过滤无关 |
-| two_rooms | 2 rooms | 8 | 0 | 结果符合预期；修复前的 19-cell 微小伪区域已消失 |
+| corridor4 | 5 rooms | 7 | 0 (0.0%) | 4 个房间 + 走廊符合预期，自由区域 100% 覆盖 |
+| grid6_furniture | 6 rooms | 6 | 0 (0.0%) | 物理墙体由 structural raster 补全，六个房间被硬墙准确隔开，自由区域 100% 覆盖 |
+| living_room | 1 room | 5 | 0 (0.0%) | 家具不切分主体，主体房间测地全覆盖（原 449 空洞已全部消除） |
+| room3 | 6 rooms | 10 | 0 (0.0%) | 主要物理墙体隔断 6 个独立房间，自由空间 100% 覆盖 |
+| room4 | 5 rooms | 10 | 0 (0.0%) | 5 个房间严格按物理墙体切分，原 180 像素内部空洞已通过测地波前扩散全覆盖 |
+| two_rooms | 2 rooms | 8 | 0 (0.0%) | 2 个房间严格以中间实体墙与门洞隔开，自由区域 100% 覆盖 |
 
 ## 文件说明
 

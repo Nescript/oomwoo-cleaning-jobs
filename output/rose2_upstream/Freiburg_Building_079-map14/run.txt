@@ -5,7 +5,7 @@ identity : 6e75591eca567194ce95f296fee8cd18f8269ee4bdac8e60309e08db0ddc2837
 cells    : free 158970 (18.7%), occupied 15679, unknown 673223
 base map : output/rose2_upstream/Freiburg_Building_079-map14/source.render.png
 implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
-rooms : 14
+rooms : 18
 walls : 17
   (-93.42,-90.28)-(-93.42,-72.67) support=1.000 dir=1.571
   (-93.42,-90.28)-(-51.57,-90.28) support=1.000 dir=0.000
@@ -24,21 +24,25 @@ walls : 17
   (-59.17,-90.28)-(-57.92,-72.67) support=0.273 dir=1.500
   (-55.72,-85.17)-(-54.82,-72.47) support=0.267 dir=1.500
   (-75.83,-91.92)-(-74.33,-71.17) support=0.168 dir=1.499
-  #1: 21.76 m^2 (8704 cells)
+  #1: 25.44 m^2 (10177 cells)
   #2: 20.94 m^2 (8377 cells)
-  #3: 14.37 m^2 (5747 cells)
-  #4: 20.21 m^2 (8084 cells)
-  #5: 20.76 m^2 (8302 cells)
-  #6: 71.26 m^2 (28504 cells)
-  #7: 50.90 m^2 (20361 cells)
-  #8: 39.18 m^2 (15673 cells)
-  #9: 14.44 m^2 (5776 cells)
-  #10: 11.43 m^2 (4573 cells)
-  #11: 22.26 m^2 (8902 cells)
-  #12: 22.90 m^2 (9159 cells)
-  #13: 20.65 m^2 (8259 cells)
-  #14: 39.62 m^2 (15847 cells)
-unassigned : 2702 cells (1.7% of free)
+  #3: 0.07 m^2 (27 cells)
+  #4: 0.14 m^2 (54 cells)
+  #5: 14.37 m^2 (5747 cells)
+  #6: 20.22 m^2 (8086 cells)
+  #7: 1.01 m^2 (402 cells)
+  #8: 20.76 m^2 (8302 cells)
+  #9: 51.73 m^2 (20691 cells)
+  #10: 72.04 m^2 (28816 cells)
+  #11: 39.18 m^2 (15673 cells)
+  #12: 14.48 m^2 (5792 cells)
+  #13: 11.43 m^2 (4573 cells)
+  #14: 22.27 m^2 (8906 cells)
+  #15: 22.94 m^2 (9175 cells)
+  #16: 3.72 m^2 (1488 cells)
+  #17: 20.67 m^2 (8267 cells)
+  #18: 35.96 m^2 (14383 cells)
+unassigned : 0 cells (0.0% of free)
 segments : output/rose2_upstream/Freiburg_Building_079-map14/segments.png
 walls overlay : output/rose2_upstream/Freiburg_Building_079-map14/walls.png
 diagnostic : output/rose2_upstream/Freiburg_Building_079-map14/diagnostics/01_cleaned_map.png

@@ -4,7 +4,7 @@ import numpy as np
 import math
 
 
-def create_matrix_l(faces, sigma, val):
+def create_matrix_l(faces, sigma, val, hard_wall_threshold=0.40):
 	# create matrix L as in Mura paper
 	riga = []
 	# create matrix with only first line
@@ -17,7 +17,10 @@ def create_matrix_l(faces, sigma, val):
 			if adj:
 				e = fc.common_edge(face, face2)
 				w = e[0].weight
-				val = math.exp(-w/sigma)
+				if hard_wall_threshold is not None and w >= hard_wall_threshold:
+					val = 0.0
+				else:
+					val = math.exp(-w/sigma)
 			else:
 				val = 0
 		riga.append(val)
@@ -33,7 +36,10 @@ def create_matrix_l(faces, sigma, val):
 				if adj:
 					e = fc.common_edge(face, face2)
 					w = e[0].weight
-					val = math.exp(-w/sigma)
+					if hard_wall_threshold is not None and w >= hard_wall_threshold:
+						val = 0.0
+					else:
+						val = math.exp(-w/sigma)
 				else:
 					val = 0
 			riga.append(val)

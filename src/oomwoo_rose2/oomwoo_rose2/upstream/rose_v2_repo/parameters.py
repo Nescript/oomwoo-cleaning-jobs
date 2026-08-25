@@ -60,6 +60,7 @@ class ParameterObj:
         # Matrix parameters
         # parameter to check the weight of an edge for clustering of faces
         self.sigma = 0.125
+        self.hard_wall_threshold = 0.40
 
         # DBSCAN parameters
         self.eps = 0.85  # 0.85#1.5#0.85

@@ -5,7 +5,7 @@ identity : c3d7e0bf3503a5897571247d9c1aaaa8c305856b36892e61aa88748bb2a91181
 cells    : free 14963 (2.3%), occupied 1808, unknown 623229
 base map : output/rose2_upstream/Virtual-ViMantic_House30/source.render.png
 implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
-rooms : 4
+rooms : 6
 walls : 12
   (-3.93,-11.88)-(-3.93,1.53) support=1.000 dir=1.571
   (-3.93,-11.88)-(6.03,-11.88) support=1.000 dir=0.000
@@ -19,11 +19,13 @@ walls : 12
   (-0.02,-7.92)-(6.28,-7.77) support=0.246 dir=0.024
   (0.03,-10.92)-(5.38,-10.78) support=0.243 dir=0.028
   (-3.93,-6.47)-(6.03,-6.27) support=0.226 dir=0.020
-  #1: 21.64 m^2 (8655 cells)
-  #2: 4.00 m^2 (1599 cells)
-  #3: 3.47 m^2 (1386 cells)
-  #4: 4.38 m^2 (1751 cells)
-unassigned : 1572 cells (10.5% of free)
+  #1: 0.03 m^2 (11 cells)
+  #2: 22.82 m^2 (9126 cells)
+  #3: 4.00 m^2 (1599 cells)
+  #4: 4.21 m^2 (1683 cells)
+  #5: 0.06 m^2 (24 cells)
+  #6: 6.24 m^2 (2496 cells)
+unassigned : 0 cells (0.0% of free)
 segments : output/rose2_upstream/Virtual-ViMantic_House30/segments.png
 walls overlay : output/rose2_upstream/Virtual-ViMantic_House30/walls.png
 diagnostic : output/rose2_upstream/Virtual-ViMantic_House30/diagnostics/01_cleaned_map.png

@@ -8,6 +8,9 @@ oomwoo_rose2:
     lines_threshold: 0.22
     lines_distance_px: 20.0
     edges_threshold: 0.0
+    hard_wall_threshold: 0.40
+    min_component_size: 10
+    enable_geodesic_coverage: true
     rooms_voronoi: false
     voronoi_closeness: 10
     voronoi_blur: 8

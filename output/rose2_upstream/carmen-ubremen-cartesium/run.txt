@@ -5,7 +5,7 @@ identity : b34e47211d0c816cd3969dd60f637623f131a77a43565e741f2ec139faf241f9
 cells    : free 200046 (15.7%), occupied 12540, unknown 1059222
 base map : output/rose2_upstream/carmen-ubremen-cartesium/source.render.png
 implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
-rooms : 6
+rooms : 10
 walls : 13
   (1.71,-10.11)-(1.71,-1.05) support=1.000 dir=1.571
   (1.71,-10.11)-(23.71,-10.11) support=1.000 dir=0.000
@@ -20,13 +20,17 @@ walls : 13
   (2.47,-10.11)-(23.71,-2.99) support=0.270 dir=0.323
   (8.37,-1.05)-(11.31,-10.11) support=0.245 dir=1.885
   (1.71,-9.05)-(23.71,-1.67) support=0.226 dir=0.324
-  #1: 3.08 m^2 (7703 cells)
-  #2: 41.33 m^2 (103328 cells)
-  #3: 8.76 m^2 (21893 cells)
-  #4: 7.13 m^2 (17830 cells)
-  #5: 6.78 m^2 (16938 cells)
-  #6: 3.16 m^2 (7904 cells)
-unassigned : 24450 cells (12.2% of free)
+  #1: 3.45 m^2 (8619 cells)
+  #2: 0.03 m^2 (69 cells)
+  #3: 0.01 m^2 (30 cells)
+  #4: 0.01 m^2 (37 cells)
+  #5: 49.62 m^2 (124052 cells)
+  #6: 0.01 m^2 (14 cells)
+  #7: 8.76 m^2 (21902 cells)
+  #8: 7.13 m^2 (17830 cells)
+  #9: 7.52 m^2 (18794 cells)
+  #10: 3.43 m^2 (8577 cells)
+unassigned : 0 cells (0.0% of free)
 segments : output/rose2_upstream/carmen-ubremen-cartesium/segments.png
 walls overlay : output/rose2_upstream/carmen-ubremen-cartesium/walls.png
 diagnostic : output/rose2_upstream/carmen-ubremen-cartesium/diagnostics/01_cleaned_map.png

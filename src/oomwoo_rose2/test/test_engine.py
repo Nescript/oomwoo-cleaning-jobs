@@ -42,8 +42,33 @@ def test_launch_profile_parameter_validation():
     config = Rose2Config()
     config.validate()
     assert config.lines_threshold == pytest.approx(0.22)
+    assert config.hard_wall_threshold == pytest.approx(0.40)
+    assert config.min_component_size == 10
+    assert config.enable_geodesic_coverage is True
     with pytest.raises(SegmentationError, match='between 0 and 1'):
         Rose2Config(filter_level=1.1).validate()
+    with pytest.raises(SegmentationError, match='between 0 and 1'):
+        Rose2Config(hard_wall_threshold=1.5).validate()
+    with pytest.raises(SegmentationError, match='non-negative'):
+        Rose2Config(min_component_size=-1).validate()
+
+
+def test_geodesic_coverage_fills_unassigned_free_cells():
+    source = make_map()
+    cleanable = source.free_mask()
+    labels = np.zeros((10, 12), dtype=np.int32)
+    # Seed region 1 in the upper half and region 2 in lower half
+    labels[1:3, 1:11] = 1
+    labels[7:9, 1:11] = 2
+
+    filled_labels, final_cleanable = Rose2Segmenter._geodesic_coverage(
+        labels, source, cleanable, min_component_size=5
+    )
+    # Check that all free cleanable space is assigned to either 1 or 2
+    assert not np.any(final_cleanable & (filled_labels == 0))
+    assert filled_labels[2, 5] == 1
+    assert filled_labels[8, 5] == 2
+    assert filled_labels[0, 0] == 0  # wall/boundary remains 0
 
 
 def test_source_image_matches_upstream_occupancy_conversion_and_mask():

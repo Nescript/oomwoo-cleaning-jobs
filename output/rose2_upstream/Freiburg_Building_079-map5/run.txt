@@ -5,7 +5,7 @@ identity : 75182e890966fc8f3f610914390c60a59bf1e930504411c9c8c30bf5c326adb1
 cells    : free 118392 (14.0%), occupied 8426, unknown 721054
 base map : output/rose2_upstream/Freiburg_Building_079-map5/source.render.png
 implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
-rooms : 4
+rooms : 9
 walls : 9
   (-89.38,-90.38)-(-89.38,-72.72) support=1.000 dir=1.571
   (-89.38,-90.38)-(-51.67,-90.38) support=1.000 dir=0.000
@@ -16,11 +16,16 @@ walls : 9
   (-89.38,-79.12)-(-51.67,-81.67) support=0.495 dir=3.074
   (-59.17,-90.38)-(-57.88,-72.72) support=0.297 dir=1.497
   (-89.62,-73.62)-(-51.42,-76.17) support=0.135 dir=3.075
-  #1: 71.24 m^2 (28496 cells)
-  #2: 101.61 m^2 (40645 cells)
-  #3: 20.87 m^2 (8347 cells)
-  #4: 94.11 m^2 (37643 cells)
-unassigned : 3261 cells (2.8% of free)
+  #1: 0.14 m^2 (55 cells)
+  #2: 71.24 m^2 (28496 cells)
+  #3: 1.02 m^2 (408 cells)
+  #4: 10.60 m^2 (4241 cells)
+  #5: 91.78 m^2 (36711 cells)
+  #6: 0.03 m^2 (12 cells)
+  #7: 20.88 m^2 (8353 cells)
+  #8: 100.25 m^2 (40099 cells)
+  #9: 0.03 m^2 (10 cells)
+unassigned : 0 cells (0.0% of free)
 segments : output/rose2_upstream/Freiburg_Building_079-map5/segments.png
 walls overlay : output/rose2_upstream/Freiburg_Building_079-map5/walls.png
 diagnostic : output/rose2_upstream/Freiburg_Building_079-map5/diagnostics/01_cleaned_map.png

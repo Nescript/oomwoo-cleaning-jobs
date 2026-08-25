@@ -5,7 +5,7 @@ identity : 0a0b6733a0c1c60048c31163a23e140d3ca9fea9e992f181e922e659e2960f7d
 cells    : free 72509 (6.7%), occupied 5788, unknown 1003047
 base map : output/rose2_upstream/maps-nostre-simona-house/source.render.png
 implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
-rooms : 3
+rooms : 5
 walls : 16
   (-4.91,-2.75)-(-4.91,6.35) support=1.000 dir=1.571
   (-4.91,-2.75)-(2.23,-2.75) support=1.000 dir=0.000
@@ -23,10 +23,12 @@ walls : 16
   (-5.01,-2.13)-(-0.83,-2.49) support=0.311 dir=3.056
   (-4.91,3.13)-(2.23,2.51) support=0.307 dir=3.055
   (-4.91,0.99)-(2.23,0.37) support=0.235 dir=3.055
-  #1: 1.64 m^2 (4094 cells)
-  #2: 21.63 m^2 (54067 cells)
-  #3: 3.96 m^2 (9894 cells)
-unassigned : 4454 cells (6.1% of free)
+  #1: 1.72 m^2 (4294 cells)
+  #2: 0.05 m^2 (137 cells)
+  #3: 17.32 m^2 (43309 cells)
+  #4: 5.70 m^2 (14242 cells)
+  #5: 4.19 m^2 (10487 cells)
+unassigned : 0 cells (0.0% of free)
 segments : output/rose2_upstream/maps-nostre-simona-house/segments.png
 walls overlay : output/rose2_upstream/maps-nostre-simona-house/walls.png
 diagnostic : output/rose2_upstream/maps-nostre-simona-house/diagnostics/01_cleaned_map.png

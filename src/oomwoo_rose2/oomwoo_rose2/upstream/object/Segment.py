@@ -414,7 +414,13 @@ def set_weights(edges, wall_list, structural_image=None):
 			and structural_image is not None
 			and edge.angular_cluster is not None
 		):
-			weight = structural_raster_support(edge, structural_image)
+			weight = max(weight, structural_raster_support(edge, structural_image))
+		elif (
+			structural_image is not None
+			and edge.angular_cluster is not None
+		):
+			raster_sup = structural_raster_support(edge, structural_image)
+			weight = max(weight, raster_sup)
 		edge.set_weight(weight)
 		del projections[:]
 	return edges

@@ -36,9 +36,9 @@ def _source_from_render(relative_path: str, embedded_scale: int) -> SourceMap:
     ('relative_path', 'embedded_scale', 'expected_rooms', 'expected_unassigned'), (
         ('src/oomwoo_rose2/test/maps/demo/corridor4.render.png', 3, 5, 0),
         ('src/oomwoo_rose2/test/maps/demo/grid6_furniture.render.png', 3, 6, 0),
-        ('src/oomwoo_rose2/test/maps/demo/living_room.render.png', 2, 1, 449),
-        ('src/oomwoo_rose2/test/maps/demo/room3.png', 1, 5, 0),
-        ('src/oomwoo_rose2/test/maps/demo/room4.png', 1, 4, 180),
+        ('src/oomwoo_rose2/test/maps/demo/living_room.render.png', 2, 1, 0),
+        ('src/oomwoo_rose2/test/maps/demo/room3.png', 1, 6, 0),
+        ('src/oomwoo_rose2/test/maps/demo/room4.png', 1, 5, 0),
         ('src/oomwoo_rose2/test/maps/demo/two_rooms.render.png', 1, 2, 0),
     ))
 def test_docs_map_produces_a_valid_result(

@@ -225,7 +225,9 @@ class Minibatch:
 
             # ----------------------MATRICES L, D, D^-1, ED M = D^-1 * L--------------------------
 
-            (matrix_l_th1, matrix_d_th1, matrix_d_inv_th1, X_th1) = lay.create_matrices(cells_th1, sigma=param_obj.sigma)
+            (matrix_l_th1, matrix_d_th1, matrix_d_inv_th1, X_th1) = lay.create_matrices(
+                cells_th1, sigma=param_obj.sigma,
+                hard_wall_threshold=getattr(param_obj, 'hard_wall_threshold', 0.40))
 
             # -------------------------------------------------------------------------------------
 

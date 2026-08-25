@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 import logging
 import math
@@ -49,13 +50,16 @@ class Rose2Config:
     lines_threshold: float = 0.22
     lines_distance_px: float = 20.0
     edges_threshold: float = 0.0
+    hard_wall_threshold: float = 0.40
+    min_component_size: int = 10
+    enable_geodesic_coverage: bool = True
     rooms_voronoi: bool = False
     voronoi_closeness: int = 10
     voronoi_blur: int = 8
     voronoi_iterations: int = 5
 
     def validate(self) -> None:
-        for name in ('filter_level', 'lines_threshold', 'edges_threshold'):
+        for name in ('filter_level', 'lines_threshold', 'edges_threshold', 'hard_wall_threshold'):
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
                 raise SegmentationError(f'{name} must be between 0 and 1')
@@ -63,6 +67,8 @@ class Rose2Config:
             raise SegmentationError('fft_band_width must be positive')
         if self.lines_distance_px < 0:
             raise SegmentationError('lines_distance_px must be non-negative')
+        if self.min_component_size < 0:
+            raise SegmentationError('min_component_size must be non-negative')
         if self.voronoi_iterations < 0:
             raise SegmentationError('voronoi_iterations must be non-negative')
 
@@ -137,6 +143,7 @@ class Rose2Segmenter:
         params.th1 = self.config.lines_threshold
         params.distance_extended_segment = self.config.lines_distance_px
         params.threshold_edges = self.config.edges_threshold
+        params.hard_wall_threshold = self.config.hard_wall_threshold
         params.voronoi_closeness = self.config.voronoi_closeness
         params.blur = self.config.voronoi_blur
         params.iterations = self.config.voronoi_iterations
@@ -162,6 +169,9 @@ class Rose2Segmenter:
 
         progress('canonicalizing', 0.85)
         labels = self._rasterize_rooms(rooms, source_map.cells.shape)
+        if self.config.enable_geodesic_coverage:
+            labels, cleanable = self._geodesic_coverage(
+                labels, source_map, cleanable, self.config.min_component_size)
         labels, regions, cleanable = canonicalize_labels(
             labels, source_map, cleanable)
         if not regions:
@@ -226,6 +236,84 @@ class Rose2Segmenter:
                     if hole.size:
                         cv2.fillPoly(labels, [hole], 0)
         return labels
+
+    @classmethod
+    def _geodesic_coverage(
+        cls,
+        labels: np.ndarray,
+        source_map: SourceMap,
+        cleanable: np.ndarray,
+        min_component_size: int = 10,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Ensure all reachable cleanable free cells are assigned to a room without wall bleeding.
+
+        1. Filter tiny isolated noise components with area < min_component_size.
+        2. Multi-source BFS across cleanable free space (obstacle mask = ~cleanable | occupied).
+        3. Remaining unassigned connected components receive new room labels if >= min_component_size.
+        """
+        cleanable = cleanable.copy()
+        labels = labels.copy()
+        labels[~cleanable] = 0
+
+        # Step 1: Filter tiny isolated noise components without seed labels
+        num_labels, comp_labels, stats, _ = cv2.connectedComponentsWithStats(
+            cleanable.astype(np.uint8), connectivity=8
+        )
+        for comp_idx in range(1, num_labels):
+            area = stats[comp_idx, cv2.CC_STAT_AREA]
+            comp_mask = (comp_labels == comp_idx)
+            if area < min_component_size and not np.any(labels[comp_mask] > 0):
+                cleanable[comp_mask] = False
+                labels[comp_mask] = 0
+
+        # Step 2: Multi-source BFS wavefront propagation
+        unassigned = cleanable & (labels == 0)
+        if not unassigned.any():
+            return labels, cleanable
+
+        rows, cols = labels.shape
+        kernel = np.ones((3, 3), dtype=np.uint8)
+        unassigned_dilated = cv2.dilate(
+            unassigned.astype(np.uint8), kernel, iterations=1).astype(bool)
+        seed_mask = (labels > 0) & cleanable & unassigned_dilated
+
+        queue = deque()
+        for r, c in zip(*np.nonzero(seed_mask)):
+            queue.append((int(r), int(c), int(labels[r, c])))
+
+        neighbor_offsets = (
+            (-1, -1), (-1, 0), (-1, 1),
+            (0, -1),           (0, 1),
+            (1, -1),  (1, 0),  (1, 1),
+        )
+
+        while queue:
+            r, c, label = queue.popleft()
+            for dr, dc in neighbor_offsets:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < rows and 0 <= nc < cols:
+                    if cleanable[nr, nc] and labels[nr, nc] == 0:
+                        labels[nr, nc] = label
+                        queue.append((nr, nc, label))
+
+        # Step 3: Handle any remaining unassigned components
+        remaining_unassigned = cleanable & (labels == 0)
+        if remaining_unassigned.any():
+            num_rem, rem_labels, rem_stats, _ = cv2.connectedComponentsWithStats(
+                remaining_unassigned.astype(np.uint8), connectivity=8
+            )
+            next_label = int(labels.max()) + 1 if labels.max() > 0 else 1
+            for comp_idx in range(1, num_rem):
+                comp_mask = (rem_labels == comp_idx)
+                area = rem_stats[comp_idx, cv2.CC_STAT_AREA]
+                if area >= min_component_size:
+                    labels[comp_mask] = next_label
+                    next_label += 1
+                else:
+                    cleanable[comp_mask] = False
+                    labels[comp_mask] = 0
+
+        return labels, cleanable
 
     @staticmethod
     def _extract_walls(source_map: SourceMap, batch) -> tuple[WallSegment, ...]:

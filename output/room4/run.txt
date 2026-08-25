@@ -6,7 +6,7 @@ identity : 3b380141152ca258861b0b4267a31234f342a534782a5df3e7d91eee3ddfa118
 cells    : free 8617 (21.5%), occupied 4019, unknown 27364
 base map : output/room4/source.render.png
 implementation : rose2 upstream-3a010b9e6bb2+oomwoo.4
-rooms : 4
+rooms : 5
 walls : 10
   (0.03,3.73)-(0.03,9.93) support=1.000 dir=1.571
   (0.03,3.73)-(8.43,3.73) support=1.000 dir=0.000
@@ -19,10 +19,11 @@ walls : 10
   (2.98,3.73)-(2.98,9.93) support=0.484 dir=1.571
   (0.03,8.03)-(8.43,7.98) support=0.393 dir=3.136
   #1: 1.50 m^2 (600 cells)
-  #2: 4.65 m^2 (1859 cells)
-  #3: 2.55 m^2 (1021 cells)
-  #4: 12.39 m^2 (4957 cells)
-unassigned : 180 cells (2.1% of free)
+  #2: 3.00 m^2 (1201 cells)
+  #3: 4.65 m^2 (1859 cells)
+  #4: 9.38 m^2 (3752 cells)
+  #5: 3.01 m^2 (1205 cells)
+unassigned : 0 cells (0.0% of free)
 segments : output/room4/segments.png
 walls overlay : output/room4/walls.png
 diagnostic : output/room4/diagnostics/01_cleaned_map.png

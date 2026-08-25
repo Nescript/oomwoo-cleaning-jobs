@@ -337,9 +337,9 @@ def remove_frame_fringes(
 	return [cells[index] for index in keep], [polygons[index] for index in keep]
 
 
-def create_matrices(cells, sigma=0.00000125, val=0):
+def create_matrices(cells, sigma=0.00000125, val=0, hard_wall_threshold=0.40):
 	# sigma was 0.1
-	matrix_l = mtx.create_matrix_l(cells, sigma, val)
+	matrix_l = mtx.create_matrix_l(cells, sigma, val, hard_wall_threshold=hard_wall_threshold)
 	matrix_d = mtx.create_matrix_d(matrix_l)
 	matrix_d_inv = matrix_d.getI()
 	matrix_m = matrix_d_inv.dot(matrix_l)
