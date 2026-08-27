@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     maintainer='oomwoo',
     maintainer_email='dev@example.com',
-    description='Native room segmentation engine, Action server, and visualization tools.',
+    description='Room segmentation based on the ROSE2 method: ROS 2 action server, client, and visualization tools.',
     license='GPL-3.0-only',
     tests_require=['pytest'],
     entry_points={

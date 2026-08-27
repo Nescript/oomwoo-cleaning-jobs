@@ -1,6 +1,6 @@
 # ROSE2 docs 地图修复后验证
 
-Provider：`rose2 upstream-3a010b9e6bb2+oomwoo.4`（历史 wrapper 记录；当前分支的同名场景已由 `oomwoo_segmentation` 原生引擎重新验证，见 `output/demo/`、`output/ipa/`、`output/rose2_upstream/`）
+Provider：`rose2 upstream-3a010b9e6bb2+oomwoo.4`（历史 wrapper 记录；当前分支的同名场景已由 `oomwoo_segmentation` 引擎重新验证，见 `output/demo/`、`output/ipa/`、`output/rose2_upstream/`）
 
 ## 本次修复
 

@@ -2,6 +2,8 @@
 
 User cleaning intent and long-running job orchestration on saved maps (ROS 2 Jazzy).
 
+Room segmentation is based on the ROSE2 method by [AISLab, University of Milano-Bicocca](https://github.com/aislabunimi/ROSE2) (GPLv3): FFT structural filtering and dominant-direction extraction, Hough wall detection and clustering, planar cell construction, and DBSCAN room clustering. This repository integrates the pipeline as an in-memory module behind a ROS 2 action interface.
+
 **Development context and design decisions: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** (single source of truth — read before making changes). The completed replacement record is in [docs/ROSE2_MIGRATION_PLAN.md](docs/ROSE2_MIGRATION_PLAN.md).
 
 ## Phase 1 deliverable
@@ -9,7 +11,7 @@ User cleaning intent and long-running job orchestration on saved maps (ROS 2 Jaz
 `saved map → automatic candidate regions → manual editing → validation → Published Region Set persistence`
 
 - `src/oomwoo_segmentation_msgs`: standard-type ROS 2 `SegmentRooms` action and room/wall messages
-- `src/oomwoo_segmentation`: GPLv3 native room-segmentation engine (in-memory port of the pinned ROSE + ROSE2 pipeline), action server and client, map model/I/O, contract validation, and deterministic rendering
+- `src/oomwoo_segmentation`: room-segmentation engine based on the pinned ROSE + ROSE2 pipeline, action server and client, map model/I/O, contract validation, and deterministic rendering (GPL-3.0-only)
 - `src/oomwoo_cleaning_jobs_core`: Region mask editing, Keepout/Virtual Wall, validation grading, and draft/published persistence
 
 ## Quick start
@@ -36,4 +38,4 @@ Segmentation renderings are written by `oomwoo-render-map`; diagnostics can be r
 
 ## License
 
-The OOMWOO packages are Apache-2.0 except `oomwoo_segmentation`, which is GPL-3.0-only because its engine derives from `aislabunimi/ROSE2`. See `src/oomwoo_segmentation/THIRD_PARTY.md`.
+The OOMWOO packages are Apache-2.0 except `oomwoo_segmentation`, which is GPL-3.0-only because its engine derives from [`aislabunimi/ROSE2`](https://github.com/aislabunimi/ROSE2). Upstream attribution and the full list of local modifications are recorded in `src/oomwoo_segmentation/THIRD_PARTY.md`.

@@ -3,7 +3,7 @@
 <package format="3">
   <name>oomwoo_segmentation</name>
   <version>0.1.0</version>
-  <description>Native room segmentation engine, Action server, and visualization tools.</description>
+  <description>Room segmentation based on the ROSE2 method: ROS 2 action server, client, and visualization tools.</description>
   <maintainer email="dev@example.com">oomwoo</maintainer>
   <license>GPL-3.0-only</license>
 

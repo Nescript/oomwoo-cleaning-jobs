@@ -2,7 +2,7 @@
 
 Status: **implemented and verified** on branch `ROSE2`.
 
-> **Update (2026-08-25): native rewrite.** The `oomwoo_rose2` wrapper package (vendored upstream code + temporary directories) has been replaced by a pure in-memory native engine inside `oomwoo_segmentation` (`engine/`), the custom `oomwoo_segmentation_interfaces` package by the standard-type `oomwoo_segmentation_msgs`, and the PyQt5 verification GUI (`oomwoo_cleaning_jobs_ui`) has been removed. The sections below remain as the historical record of the original wrapper migration; the package table reflects the current layout.
+> **Update (2026-08-25): in-memory integration.** The `oomwoo_rose2` wrapper package (vendored upstream code + temporary directories) has been replaced by an in-memory engine in `oomwoo_segmentation` (`engine/`), still derived from the same pinned upstream ROSE2 commit. The custom `oomwoo_segmentation_interfaces` package has been replaced by the standard-type `oomwoo_segmentation_msgs`, and the PyQt5 verification GUI (`oomwoo_cleaning_jobs_ui`) has been removed. The sections below remain as the historical record of the original wrapper migration; the package table reflects the current layout.
 
 ## Objective
 
@@ -13,7 +13,7 @@ Replace the in-process cleaning-jobs room segmentation with a ROS 2 module seam.
 | Package | License | Responsibility |
 | --- | --- | --- |
 | `oomwoo_segmentation_msgs` | Apache-2.0 | Standard-type `SegmentRooms` action and room/wall messages |
-| `oomwoo_segmentation` | GPL-3.0 | Native ROSE + ROSE2 engine, Source-map identity and I/O, canonical models and validation, ROS conversions, action server/client, rendering, CLI |
+| `oomwoo_segmentation` | GPL-3.0 | Room-segmentation engine based on ROSE + ROSE2, Source-map identity and I/O, canonical models and validation, ROS conversions, action server/client, rendering, CLI |
 | `oomwoo_cleaning_jobs_core` | Apache-2.0 | Editable Regions, constraints, persistence, validation; no segmentation algorithm |
 
 The action boundary allows another implementation package to replace ROSE2 without changing cleaning-jobs or the rendering tools. Provider-specific parameters stay on the provider node and do not leak into the common action.

@@ -1,11 +1,12 @@
 # oomwoo_segmentation
 
-Native ROS 2 room segmentation engine and tooling.
+Room segmentation for ROS 2 based on the ROSE2 method by [AISLab, University of
+Milano-Bicocca](https://github.com/aislabunimi/ROSE2).
 
 It owns:
 
-- the native room-segmentation engine (`engine/`), a pure in-memory port of
-  the pinned upstream ROSE + ROSE2 two-stage pipeline (FFT structural
+- the room-segmentation engine (`engine/`), an in-memory port of the pinned
+  upstream ROSE + ROSE2 two-stage pipeline (FFT structural
   filtering -> Hough walls -> angular/spatial clustering -> extended lines ->
   planar cells -> affinity DBSCAN -> rooms);
 - the `oomwoo_segmentation` ROS 2 action server (`node.py`) implementing
@@ -31,6 +32,14 @@ repository-root `output/` directory:
 ```bash
 python3 test/run_map_batch.py test/maps/ipa/*.png --output-root output/ipa
 ```
+
+## Upstream and credits
+
+The segmentation engine is derived from
+[`aislabunimi/ROSE2`](https://github.com/aislabunimi/ROSE2), pinned at commit
+`3a010b9e6bb2477de3b5b46208ebfccd71dfafbf`, licensed GPLv3 by AISLab
+(University of Milano-Bicocca). All local modifications are listed in
+`THIRD_PARTY.md`.
 
 ## License
 
