@@ -7,7 +7,7 @@ import yaml
 
 from fixtures import fake_segmentation, make_two_rooms_map
 
-from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout
+from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout, SpotArea
 from oomwoo_cleaning_jobs_core.persistence import RegionSetStore
 from oomwoo_cleaning_jobs_core.regions import RegionSet
 
@@ -121,3 +121,29 @@ def test_publish_refuses_validation_errors(tmp_path):
 
     with pytest.raises(ValueError, match='empty_region_set'):
         RegionSetStore(tmp_path).publish(source, region_set, ConstraintSet())
+
+
+def test_spot_area_persists_in_constraints_round_trip(tmp_path):
+    source = make_two_rooms_map()
+    spot = SpotArea.from_box(center=(1.0, 2.0), width_m=0.6, height_m=0.8,
+                             identifier='sp1', name='Kitchen Sink')
+    constraints = ConstraintSet(
+        keepouts=(Keepout('table', ((-2.0, 0.0), (-1.8, 0.0),
+                                    (-1.8, 0.2), (-2.0, 0.2))),),
+        spot_area=spot,
+    )
+    region_set = _draft(source, constraints)
+    store = RegionSetStore(tmp_path)
+
+    # Test draft persistence
+    store.save_draft(source, region_set, constraints)
+    loaded_draft = store.load_draft(source)
+    assert loaded_draft is not None
+    assert loaded_draft.constraints.spot_area == spot
+
+    # Test published persistence
+    store.publish(source, region_set, constraints)
+    loaded_pub = store.load_published(source)
+    assert loaded_pub is not None
+    assert loaded_pub.constraints.spot_area == spot
+

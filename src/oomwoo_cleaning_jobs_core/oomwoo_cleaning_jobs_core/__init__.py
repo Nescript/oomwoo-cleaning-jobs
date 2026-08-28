@@ -13,15 +13,30 @@ from oomwoo_segmentation.source_map import (
     SourceMap,
 )
 
-from .constraints import ConstraintSet, Keepout, VirtualWall
+from .constraints import ConstraintSet, Keepout, SpotArea, VirtualWall
 from .persistence import RegionSetStore, StoredRegionSet
+from .targets import (
+    CleaningTarget,
+    configure_last_spot_area,
+    configure_selected_regions,
+    configure_spot_area,
+    configure_whole_map,
+    create_spot_region_set,
+)
 
 __all__ = [
     'ConstraintSet',
     'Keepout',
     'VirtualWall',
+    'SpotArea',
     'RegionSetStore',
     'StoredRegionSet',
+    'CleaningTarget',
+    'configure_whole_map',
+    'configure_selected_regions',
+    'configure_spot_area',
+    'configure_last_spot_area',
+    'create_spot_region_set',
     'DEFAULT_FREE_THRESH',
     'FREE',
     'OCCUPIED',

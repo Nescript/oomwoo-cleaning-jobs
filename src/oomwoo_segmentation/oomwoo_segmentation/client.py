@@ -7,6 +7,7 @@ from typing import Optional
 import numpy as np
 import rclpy
 from rclpy.action import ActionClient
+from rclpy.action.client import ClientGoalHandle
 from rclpy.node import Node
 from rclpy.task import Future
 
@@ -33,7 +34,7 @@ class RoomSegmentationActionClient(Node):
     ) -> None:
         super().__init__(node_name)
         self._client = ActionClient(self, SegmentRooms, action_name)
-        self._goal_handle = None
+        self._goal_handle: Optional[ClientGoalHandle] = None
 
     def segment_async(
         self,
@@ -58,8 +59,8 @@ class RoomSegmentationActionClient(Node):
 
         def goal_response(done: Future) -> None:
             try:
-                handle = done.result()
-                if not handle.accepted:
+                handle: Optional[ClientGoalHandle] = done.result()
+                if handle is None or not handle.accepted:
                     raise SegmentationError('segmentation goal was rejected')
                 self._goal_handle = handle
                 received = handle.get_result_async()
@@ -69,7 +70,10 @@ class RoomSegmentationActionClient(Node):
 
         def result_response(done: Future) -> None:
             try:
-                response = done.result().result
+                res = done.result()
+                if res is None:
+                    raise SegmentationError('action server returned no result')
+                response = res.result
                 if response.status != SegmentRooms.Result.STATUS_SUCCESS:
                     raise SegmentationError(response.message or 'segmentation failed')
                 result = result_from_ros_messages(
@@ -120,7 +124,10 @@ def segment_once(
         rclpy.spin_until_future_complete(node, future, timeout_sec=timeout_sec)
         if not future.done():
             raise SegmentationError(f'segmentation timed out after {timeout_sec:.1f}s')
-        return future.result()
+        result = future.result()
+        if result is None:
+            raise SegmentationError('segmentation produced no result')
+        return result
     finally:
         node.destroy_node()
         if owns_context:

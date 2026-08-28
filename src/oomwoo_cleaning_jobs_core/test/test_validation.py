@@ -63,18 +63,41 @@ def test_region_outside_cleanable_is_error():
     assert 'region_outside_cleanable' in _codes(report, LEVEL_ERROR)
 
 
-def test_narrow_region_unreachable_is_error():
-    """A 1-cell-wide strip region is empty after footprint erosion -> error."""
+def test_small_or_narrow_region_in_navigable_space_is_allowed():
+    """A small or narrow strip region located in open navigable space is allowed
+    because the robot can reach and sweep it from adjacent navigable positions."""
     source, rs = _make_region_set()
     stroke = np.zeros(source.cells.shape, dtype=bool)
-    stroke[40, 5:29] = True  # single row, 0.05 m wide; robot cannot enter
+    stroke[40, 5:29] = True  # single row, 0.05 m wide, in open navigable room
     label = rs.create(stroke, name='Slit')
     assert label is not None
     report = validate_region_set(rs)
+    assert report.ok
+    assert 'region_unreachable' not in _codes(report, LEVEL_ERROR)
+
+
+def test_isolated_unreachable_region_is_error():
+    """A region in an isolated cavity where no navigable position can reach
+    triggers region_unreachable error."""
+    source, rs = _make_region_set()
+    label = rs.regions()[0].label
+
+    # Surround region with keepouts so that no position within 0.17m of the region
+    # can fit the robot footprint
+    # Keep only a tiny 1-cell strip free and assign it to a Region
+    cleanable = np.zeros(source.cells.shape, dtype=bool)
+    cleanable[40, 10:15] = True  # 5 cells (0.25m x 0.05m), surrounded by walls/non-cleanable
+    isolated_rs = RegionSet(
+        labels=cleanable.astype(np.int32),
+        cleanable=cleanable,
+        resolution=source.resolution,
+        origin=source.origin,
+    )
+    report = validate_region_set(isolated_rs, robot_inscribed_radius=0.17)
     assert not report.ok
-    narrow = [i for i in report.errors if i.code == 'region_unreachable']
-    assert len(narrow) == 1
-    assert narrow[0].region == label
+    unreachable = [i for i in report.errors if i.code == 'region_unreachable']
+    assert len(unreachable) == 1
+
 
 
 def test_disconnected_core_is_warning():

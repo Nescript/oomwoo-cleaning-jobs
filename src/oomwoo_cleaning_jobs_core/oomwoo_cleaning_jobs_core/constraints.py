@@ -1,9 +1,10 @@
-"""Pure-Python domain model and rasterization for Keepouts and Virtual Walls.
+"""Pure-Python domain model and rasterization for Keepouts, Virtual Walls, and Spot Areas.
 
 Constraints use metric coordinates in the map frame; rasterization strictly
 follows the ``SourceMap`` convention that row 0 is the map's minimum y, and
 honors the origin yaw. A Keepout is a polygon; a Virtual Wall is a linear
-Keepout dilated by an explicit width.
+Keepout dilated by an explicit width. A Spot Area is a positive transient target
+polygon retained at the constraint layer.
 """
 
 from __future__ import annotations
@@ -109,26 +110,94 @@ class VirtualWall:
 
 
 @dataclass(frozen=True)
+class SpotArea:
+    """Positive transient target polygon in the map frame (retained for spot cleaning)."""
+
+    identifier: str
+    vertices: tuple[Point, ...]
+    name: str = 'Spot Area'
+
+    def __post_init__(self) -> None:
+        if not self.identifier:
+            raise ValueError('SpotArea identifier must not be empty')
+        vertices = _points(self.vertices, 'SpotArea')
+        if len(vertices) < 3:
+            raise ValueError('SpotArea needs at least three vertices')
+        area2 = sum(
+            x1 * y2 - x2 * y1
+            for (x1, y1), (x2, y2) in zip(vertices, vertices[1:] + vertices[:1])
+        )
+        if math.isclose(area2, 0.0, abs_tol=1e-12):
+            raise ValueError('SpotArea vertices must not be collinear')
+        object.__setattr__(self, 'vertices', vertices)
+
+    @classmethod
+    def from_box(
+        cls,
+        center: Point,
+        width_m: float,
+        height_m: float,
+        identifier: str = 'spot_area',
+        name: str = 'Spot Area',
+    ) -> SpotArea:
+        """Create a rectangular SpotArea centered at `center` with metric width and height."""
+        width_m = float(width_m)
+        height_m = float(height_m)
+        if not (math.isfinite(width_m) and width_m > 0 and math.isfinite(height_m) and height_m > 0):
+            raise ValueError('SpotArea box dimensions must be positive finite values')
+        cx, cy = float(center[0]), float(center[1])
+        hw = width_m / 2.0
+        hh = height_m / 2.0
+        return cls(
+            identifier=identifier,
+            vertices=(
+                (cx - hw, cy - hh),
+                (cx + hw, cy - hh),
+                (cx + hw, cy + hh),
+                (cx - hw, cy + hh),
+            ),
+            name=name,
+        )
+
+
+@dataclass(frozen=True)
 class ConstraintSet:
     """Set of spatial constraints belonging to one Region Set."""
 
     keepouts: tuple[Keepout, ...] = ()
     virtual_walls: tuple[VirtualWall, ...] = ()
+    spot_area: SpotArea | None = None
 
     def __post_init__(self) -> None:
         identifiers = [item.identifier for item in self.keepouts]
         identifiers.extend(item.identifier for item in self.virtual_walls)
+        if self.spot_area is not None:
+            identifiers.append(self.spot_area.identifier)
         if len(identifiers) != len(set(identifiers)):
-            raise ValueError('Keepout and VirtualWall identifiers must be globally unique')
+            raise ValueError('Keepout, VirtualWall, and SpotArea identifiers must be globally unique')
+
+    def with_spot_area(self, spot_area: SpotArea | None) -> ConstraintSet:
+        """Return a copy of this ConstraintSet with updated spot_area."""
+        return ConstraintSet(
+            keepouts=self.keepouts,
+            virtual_walls=self.virtual_walls,
+            spot_area=spot_area,
+        )
 
     def mask_for(self, source_map: SourceMap) -> np.ndarray:
-        """Return the union mask of all Keepouts, same shape as the SourceMap."""
+        """Return the union mask of all Keepouts (negative constraints), same shape as the SourceMap."""
         mask = np.zeros(source_map.cells.shape, dtype=bool)
         for keepout in self.keepouts:
             mask |= _rasterize_polygon(keepout.vertices, source_map)
         for wall in self.virtual_walls:
             mask |= _rasterize_polygon(wall.polygon, source_map)
         return mask
+
+    def spot_mask_for(self, source_map: SourceMap) -> np.ndarray | None:
+        """Return the rasterized mask of the retained spot_area if present, else None."""
+        if self.spot_area is None:
+            return None
+        return _rasterize_polygon(self.spot_area.vertices, source_map)
 
 
 def _rasterize_polygon(vertices: tuple[Point, ...], source_map: SourceMap) -> np.ndarray:

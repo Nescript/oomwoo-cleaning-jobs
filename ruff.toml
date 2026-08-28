@@ -18,8 +18,6 @@ exclude = [
 
 src = [
     "src/oomwoo_cleaning_jobs_core",
-    "src/oomwoo_cleaning_jobs_ui",
-    "src/oomwoo_rose2",
     "src/oomwoo_segmentation",
 ]
 
@@ -41,10 +39,8 @@ ignore = [
 [lint.isort]
 known-first-party = [
     "oomwoo_cleaning_jobs_core",
-    "oomwoo_cleaning_jobs_ui",
-    "oomwoo_rose2",
     "oomwoo_segmentation",
-    "oomwoo_segmentation_interfaces",
+    "oomwoo_segmentation_msgs",
 ]
 
 [format]

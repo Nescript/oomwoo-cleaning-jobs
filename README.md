@@ -4,7 +4,7 @@ User cleaning intent and long-running job orchestration on saved maps (ROS 2 Jaz
 
 Room segmentation is based on the ROSE2 method by [AISLab, University of Milano-Bicocca](https://github.com/aislabunimi/ROSE2) (GPLv3): FFT structural filtering and dominant-direction extraction, Hough wall detection and clustering, planar cell construction, and DBSCAN room clustering. This repository integrates the pipeline as an in-memory module behind a ROS 2 action interface.
 
-**Development context and design decisions: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** (single source of truth — read before making changes). The completed replacement record is in [docs/ROSE2_MIGRATION_PLAN.md](docs/ROSE2_MIGRATION_PLAN.md).
+**Development context and design decisions: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** (single source of truth — read before making changes).
 
 ## Phase 1 deliverable
 
@@ -12,7 +12,7 @@ Room segmentation is based on the ROSE2 method by [AISLab, University of Milano-
 
 - `src/oomwoo_segmentation_msgs`: standard-type ROS 2 `SegmentRooms` action and room/wall messages
 - `src/oomwoo_segmentation`: room-segmentation engine based on the pinned ROSE + ROSE2 pipeline, action server and client, map model/I/O, contract validation, and deterministic rendering (GPL-3.0-only)
-- `src/oomwoo_cleaning_jobs_core`: Region mask editing, Keepout/Virtual Wall, validation grading, and draft/published persistence
+- `src/oomwoo_cleaning_jobs_core`: Region mask editing, Keepout/Virtual Wall/Spot Area, validation grading, and draft/published persistence
 
 ## Quick start
 

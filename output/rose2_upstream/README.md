@@ -5,17 +5,16 @@ Provider：`rose2 upstream-3a010b9e6bb2+oomwoo.4`
 ## 目的
 
 将上游 [aislabunimi/ROSE2](https://github.com/aislabunimi/ROSE2) `src/maps/` 自带的全部测试地图原样复制到
-`src/oomwoo_rose2/test/maps/rose2_upstream/`（与 pinned commit `3a010b9e6bb2` 一致），
-通过本分支的 `Rose2Segmenter.segment()` 公共接口批量运行，验证移植后的 pipeline
+`src/oomwoo_segmentation/test/maps/rose2_upstream/`（与 pinned commit `3a010b9e6bb2` 一致），
+通过本分支的 `SegmentationEngine.segment()` 接口与 Action 批量运行，验证原生移植后的 pipeline
 在真实/仿真大地图上不产生崩溃且结果满足公共 labels/rooms 契约
 （`validate_result`：label 只落在 cleanable free cell 上，label 连续且确定性）。
 
 ## 运行方式
 
 ```bash
-PYTHONPATH=<rose2-deps>:src/oomwoo_segmentation:src/oomwoo_rose2 \
-python3 src/oomwoo_rose2/test/run_map_batch.py \
-    src/oomwoo_rose2/test/maps/rose2_upstream \
+python3 src/oomwoo_segmentation/test/run_map_batch.py \
+    src/oomwoo_segmentation/test/maps/rose2_upstream \
     --output-root output/rose2_upstream
 ```
 

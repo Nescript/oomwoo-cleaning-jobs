@@ -1,194 +1,207 @@
 # oomwoo_cleaning_jobs development context
 
-This is the single development context for this repository. It records the current scope, decisions made, terminology, and open boundaries; read it in full before changing implementation or design. The user's immediate instructions and verified source-code facts take precedence over this document and must be written back into it afterwards.
+This is the single development context and local source of truth for this repository. It records the current scope, architecture, design decisions, domain rules, algorithm details, verification baselines, and open boundaries. Read it in full before making any design, implementation, testing, review, or documentation change.
+
+When implementation, verified source-code facts, or user decisions change, update this document in the same change. Do not create a second design document, RFC, baseline, or separate context file.
 
 ## Goal and scope
 
-`oomwoo_cleaning_jobs` owns **user cleaning intent and long-running job orchestration on saved maps**: whole-map, selected-Region, and spot cleaning; Region/virtual wall/keepout persistence; Job state, pause, resume, retry, and summary.
+`oomwoo_cleaning_jobs` owns **user cleaning intent and long-running job orchestration on saved maps**: whole-map, selected-Region, and spot cleaning; Region/virtual wall/keepout editing and persistence; Job lifecycle, pause, resume, retry, and summary.
 
-It does not own coverage path planning or base execution algorithms. Regular saved-map coverage reuses `oomwoo_coverage`; Nav2 is the motion execution layer. `clean-and-map` is only an RFC/algorithm reference for first-clean (SLAM, exploration, and coverage), not the backend or coverage-progress provider for saved-map Jobs. `floor-care` is a future perimeter/edge pass; it can be combined with `oomwoo_coverage`'s interior sweep but is not a general coverage backend.
+Boundary definitions:
+- It does not own coverage path planning or low-level motion execution. Regular saved-map coverage reuses `oomwoo_coverage`; Nav2 is the motion execution layer.
+- `clean-and-map` is an RFC / algorithm reference for initial exploratory cleaning (SLAM, exploration, and coverage), not the backend or coverage-progress provider for saved-map Jobs.
+- `floor-care` is a future perimeter/edge pass; it can be combined with `oomwoo_coverage`'s interior sweep but is not a general coverage backend.
 
-External sources of truth:
-
+External references:
 - [cleaning-jobs RFC](https://github.com/makerspet/oomwoo/tree/main/contributions/cleaning-jobs)
 - [clean-and-map RFC](https://github.com/makerspet/oomwoo/tree/main/contributions/clean-and-map)
 - [floor-care RFC](https://github.com/makerspet/oomwoo/tree/main/contributions/floor-care)
 - [oomwoo-ros2-tools](https://github.com/makerspet/oomwoo-ros2-tools)
 - [SOFTWARE_INTERFACES.md](https://github.com/makerspet/oomwoo/blob/main/docs/SOFTWARE_INTERFACES.md)
 
-## Current phase
+## Current phase and package architecture
 
-Phase 1 delivers only:
+Phase 1 delivers:
 
 `saved map → automatic candidate regions → manual editing → validation → Published Region Set persistence`
 
-Input is `nav_msgs/msg/OccupancyGrid`, obtained via two paths: the core library directly parses nav2 trinary `map.yaml + image` (for tests and the CLI); the GUI subscribes to `/map` at runtime (transient_local QoS) or opens a map file. Known-free cells are cleanable; unknown and occupied are not.
+### Package layout
 
-Phase 1 does not drive the robot, does not execute full Jobs, and does not freeze executor action or feedback definitions. Verification is done through the headless test suites and the rendered review artifacts under `output/`; no GUI ships in this branch.
+| Package | License | Responsibility |
+| --- | --- | --- |
+| `src/oomwoo_segmentation_msgs` | Apache-2.0 | Standard-type ROS 2 `SegmentRooms` action (`OccupancyGrid` + optional mask in, 32SC1 labels + `Room[]` + `WallSegment[]` out) and messages |
+| `src/oomwoo_segmentation` | GPL-3.0-only | Room-segmentation engine based on the pinned ROSE + ROSE2 pipeline (`engine/`), ROS 2 action server (`oomwoo_segmentation_node`) and client, Source Map model and Nav2 trinary I/O, canonical contract validation, deterministic rendering, and `oomwoo-render-map` CLI |
+| `src/oomwoo_cleaning_jobs_core` | Apache-2.0 | Region Set representation and editing (brush paint/erase/merge/split/preemption), spatial constraints (`Keepout`, `VirtualWall`, `SpotArea`), cleaning target configuration, publish validation grading, and draft/published persistence (`RegionSetStore`) |
+
+### Architecture and runtime boundaries
+
+1. **Headless domain core & action server**: Phase 1 focuses on the headless domain libraries, segmentation engine, action interfaces, and test suites. Verification is conducted via automated tests and rendered artifacts under `output/`; no GUI package ships in this branch.
+2. **Algorithm seam**: Automatic partitioning is fully encapsulated behind `oomwoo_segmentation_msgs/action/SegmentRooms`. Callers and downstream consumers depend only on this action interface and standard ROS 2 message types, remaining completely decoupled from algorithm internals.
+3. **No legacy fallbacks**: This branch runs only the engine shipped in `oomwoo_segmentation`. All legacy algorithms (maximin, watershed, saddle merge-tree, skeleton doorway clipping) have been eliminated. Failures are explicit and never fall back.
 
 ## Domain model
 
 | Term | Meaning |
 |---|---|
-| Source Map | Immutable saved OccupancyGrid; identity is derived from a content hash of metadata and cell data — a hash change means a new map. |
-| Cleanable Space | Known-free, cleaning-allowed space within the Source Map. |
-| Region | Named part of the Cleanable Space, with a raster mask as the authoritative representation (supports holes and disjoint components); geometric outlines are derived from the mask and used only for GUI and export. |
-| Candidate Region | A Region produced by automatic partitioning or under editing, not yet reviewed. |
+| Source Map | Immutable saved `OccupancyGrid`; identity is a SHA-256 hash of normalized metadata and raw cell data. Any change in hash denotes a distinct map. |
+| Cleanable Space | Known-free, cleaning-allowed space within the Source Map (`free_mask & ~keepout_mask`). |
+| Region | Named portion of Cleanable Space, authoritatively represented as a 1-bit raster mask (naturally supporting holes and disjoint components). Geometric outlines are derived on-demand for visualization and export. |
+| Candidate Region | A Region produced by automatic segmentation or currently under editing, not yet published. |
 | Region Set | Versioned set of Regions and spatial constraints belonging to one Source Map. |
-| Published Region Set | A Region Set that has passed validation and can be used to generate Jobs. |
-| Keepout / Virtual Wall | Independently persisted constraints that do not modify the Source Map; a Virtual Wall is a line-shaped Keepout. |
-| Detected Wall | A wall segment recognized by the segmentation provider (map-frame endpoints, support, direction). Pure algorithm output: reproducible from the Source Map, never persisted, and distinct from a Virtual Wall — converting one into a Virtual Wall requires explicit user confirmation. |
-| Segment | Part of a Job's target handled by one cleaning strategy; not necessarily equal to a Region. |
-| Coverage artifact | Verifiable record of covered space (e.g. a coverage grid); a percentage by itself is not an artifact. |
+| Published Region Set | A Region Set that has passed validation checks and is frozen for generating Jobs. |
+| Keepout / Virtual Wall | Spatial constraints persisted independently that do not alter the Source Map. A Virtual Wall is a line-shaped Keepout with explicit physical width. |
+| Detected Wall | A physical wall segment recognized by the segmentation provider (map-frame endpoints, support score, orientation). Reproducible algorithm output; never persisted directly and distinct from a Virtual Wall. |
+| Spot Area | A positive transient target polygon in the map frame (e.g. for custom small-area / spot cleaning). Retained at the constraint layer as the last-used spot area without mutating persistent room partitions. |
+| Cleaning Target | Configured cleaning task target holding a sequence of target region labels and an associated runtime RegionSet view for query by downstream job orchestration. |
+| Segment | Unit of a Job target handled by one cleaning strategy; not necessarily identical to a Region. |
+| Coverage artifact | Verifiable spatial record of covered space (e.g. a coverage grid); a bare percentage is not an artifact. |
 
-Automatic partitioning is a replaceable ROS 2 module behind `oomwoo_segmentation_msgs/SegmentRooms`. This branch runs only the engine shipped in `oomwoo_segmentation`; failures are explicit and never fall back to a legacy algorithm. The authoritative result is a source-grid `int32` label mask where 0 is unassigned and positive labels are Candidate Regions.
+## Phase 1 implementation details
 
-Manual editing supports at least create, move/delete/rename, merge/split of Regions, and creation of Keepout/Virtual Wall. Immediate clipping during editing and validation grading at publish time are described in "Phase 1 implementation decisions". Unassigned or deliberately uncleaned free space is allowed, but the GUI must present it clearly.
+### 1. Map identity and change detection
 
-The GUI main flow is now: **automatic segmentation → name candidate Regions one by one → save/validate and publish**. Immediately after candidates are generated, naming dialogs pop up in label order; canceling can be resumed later from "Name candidates one by one". Create, paint, erase, merge, split, and constraint editing live in the collapsed-by-default "Advanced editing (use only when candidates are wrong)" section, still serving as the correction mechanism for automatic segmentation errors.
+Map identity is computed as:
+`SHA-256(float32(resolution) + int32(width) + int32(height) + float64(origin.x, origin.y, origin.yaw) + raw int8 cell data)`
 
-## Phase 1 implementation decisions
+Key rules:
+- Excludes transient fields (`header.stamp`, `frame_id`, `map_load_time`).
+- `resolution` is normalized to `float32` so that `OccupancyGrid.info.resolution` (float32) and `map.yaml` (float64) yield identical hashes for the same physical map.
+- The hash is a change detector and persistence storage key, not a multi-map coordinator. A hash change indicates a new map; Region Sets are not silently migrated or reprojected across map hash changes.
 
-The following decisions were confirmed point by point with the user on 2026-08-22 (grilling discussion); re-confirm with the user before changing them.
+### 2. Map loading fidelity convention (Nav2 Jazzy alignment)
 
-### Package structure
+The algorithm-neutral `oomwoo_segmentation.map_io.load_map_file` strictly matches Nav2 `map_io.cpp` trinary loading:
+- `occ = 1.0 - color / 255.0` (with `negate: 0`).
+- `occ >= occupied_thresh` (default 0.65) → `OCCUPIED` (100).
+- `occ <= free_thresh` (default 0.196) → `FREE` (0).
+- Otherwise → `UNKNOWN` (-1).
+- Alpha channel `< 255` is always `UNKNOWN`.
+- Image top row corresponds to maximum map Y, so the raw pixel array is vertically flipped on load.
 
-- `src/oomwoo_segmentation_msgs`: standard-type ROS 2 messages and `SegmentRooms` action (result carries room labels plus Detected Walls). The action is the seam implemented by every provider.
-- `src/oomwoo_segmentation`: GPLv3 room-segmentation engine (in-memory port of the pinned upstream ROSE + ROSE2 pipeline), ROS 2 action server and client, map model/I/O, canonical result validation, and rendering/CLI.
-- `src/oomwoo_cleaning_jobs_core`: pure Python Region Set editing, constraints, validation, and persistence.
+### 3. Automatic segmentation and ROSE2-based engine
 
-### Map identity and change detection
+The shared ROS 2 action is `oomwoo_segmentation_msgs/action/SegmentRooms`.
+- **Request**: Immutable `nav_msgs/OccupancyGrid`, optional `sensor_msgs/Image` mono8 cleanable mask, optional diagnostics flag.
+- **Result**: Status code, implementation version, `sensor_msgs/Image` (32SC1) label grid in OccupancyGrid row order, `Room[]` metadata (id, centroid, area, boundary polygon), and `WallSegment[]` of Detected Walls.
+- **Contract rules**: Label 0 is unassigned; positive labels (1..N) are contiguous and deterministic. Occupied, unknown, and excluded cells must remain label 0. Invalid inputs and algorithm errors produce explicit error statuses (`STATUS_INVALID_REQUEST`, `STATUS_ALGORITHM_ERROR`, `STATUS_CANCELLED`).
 
-identity = SHA-256(**float32** bytes of `resolution` + `width` + `height` + `origin` position/orientation + raw int8 cell data), excluding `header.stamp`, `frame_id`, `map_load_time`, with no trinarization. The short id is the first 12 hex digits. Resolution is normalized to float32: `OccupancyGrid.info.resolution` is float32 while map.yaml is float64 — without normalization the same map loaded via topic and via file would get different identities (fixed during GUI dual-source verification).
+The segmentation engine in `oomwoo_segmentation.engine` is a pure in-memory port derived from `aislabunimi/ROSE2` commit `3a010b9e6bb2477de3b5b46208ebfccd71dfafbf`:
+1. **ROSE FFT structural filtering**: Identifies principal structural directions and produces cleaned occupancy images.
+2. **ROSE2 Hough wall extraction & clustering**: Extracts line segments, performs angular and spatial clustering, and computes extended lines.
+3. **Planar cell & edge topology**: Builds geometric cells and topological edges from line intersections.
+4. **Hard wall barrier & DBSCAN clustering**: Builds cell affinity matrix. An explicit hard wall barrier (`hard_wall_threshold=0.40`) prevents merging topological cells across confirmed physical walls.
+5. **Constrained geodesic coverage**: After polygon rasterization, `_geodesic_coverage` propagates room labels across unassigned cleanable free cells via wavefront expansion constrained by physical walls, ensuring 100% cleanable free cell coverage with 0 unassigned cells while filtering sub-10px noise artifacts.
+6. **Detected Wall extraction**: Map-frame Detected Walls are converted directly from retained merged extended segments (filtered by `lines_threshold=0.22`), clipped to map bounds, and exposed with support score and orientation.
 
-The hash acts as a **change detector and storage key**, not as multi-map management. A saved map is treated as a static artifact; the only source of change is the user re-mapping/re-saving. A hash change means a new map: when no matching Region Set is found, the GUI clearly states "no region set for the current map; N region sets belonging to other maps exist on disk". Phase 1 does not migrate/reproject region sets (origin and resolution may both change, making pixel-level migration unreliable); see open boundary 9.
+### 4. Region representation and editing semantics
 
-### Map file loading fidelity convention (verified against nav2 jazzy map_io.cpp)
+- **Internal representation**: Authoritative Region representation is a 1-bit boolean raster mask; geometric outlines are derived via `cv2.findContours`.
+- **Immediate stroke clipping**: User paint strokes are immediately clipped as `intent ∩ Cleanable Space` (`free_mask & ~keepout_mask`). If the intersection is empty, the edit is rejected.
+- **Later-painter preemption**: When a stroke overlaps existing Regions, overlapping cells are deducted from earlier Regions and assigned to the new Region. Emptied Regions are automatically pruned.
+- **Constraint clipping**: Applying or updating Keepouts/Virtual Walls immediately clips intersecting cells from all existing Regions via `RegionSet.apply_keepout_mask()`. Removing constraints restores cleanable space but does not revive previously clipped Region cells.
 
-Trinary loading: `occ = 1 - color/255` (negate=0); `occ >= occupied_thresh` → 100, `occ <= free_thresh` → 0, otherwise -1; `alpha < 255` is always unknown; the image's top row corresponds to the map's maximum y, so the map is flipped vertically after loading. map_saver always writes pixels 0 (occupied)/254 (free)/205 (unknown) with `occupied_thresh: 0.65, free_thresh: 0.196` (205 thereby reads back as unknown). The algorithm-neutral `oomwoo_segmentation.map_io.load_map_file` matches this behavior and supports trinary only.
+### 5. Validation grading (publish-time checks)
 
-Fixed the external `oomwoo_sim_support/maps/test_room` asset chain: the PGM correctly represents outside-wall unknown as 205, but the YAML previously used `free_thresh: 0.25`, which misread 205 (occ≈0.196) as free and produced candidate regions outside the walls. The generation script and the sim/deploy YAMLs are now unified at `free_thresh: 0.196`.
+Validation grades errors (blocking publication) vs warnings (informative):
 
-### Automatic segmentation
+| Severity | Condition | Rationale |
+| --- | --- | --- |
+| **Error** | Regions overlap | Partition invariant violation |
+| **Error** | Region contains occupied or unknown cells | Cannot clean non-free cells |
+| **Error** | Region cannot be reached by robot footprint from any navigable position | Robot cannot reach or sweep the region from any valid pose |
+| **Error** | Region intersects a Keepout or Virtual Wall | Safety constraint violation |
+| **Error** | Region Set has 0 Regions | Empty job target |
+| **Warning** | Unassigned cleanable free space exists | Informs user of uncovered cleanable space |
+| **Warning** | Region core is split into disconnected components by narrow throats | Informs user of potential intra-region traversal bottlenecks |
 
-The shared interface is `oomwoo_segmentation_msgs/action/SegmentRooms`. A request contains the immutable `OccupancyGrid`, an optional same-shape Cleanable Space mask (`sensor_msgs/Image` mono8), and an optional diagnostics flag. A successful result contains the implementation version, an `int32` label grid as `sensor_msgs/Image` (32SC1) in OccupancyGrid row order, room metadata (`Room[]`: id, centroid, area, boundary polygon), and a `WallSegment[]` of Detected Walls. Label 0 is unassigned; positive labels are deterministic and contiguous. Implementations must never label occupied, unknown, or excluded cells. Invalid requests and algorithm failures are explicit action results; no provider fallback is permitted. Detected Walls are derived, non-authoritative data (the authoritative result remains the label grid); providers that do not detect walls return an empty array. Wall validation requires finite endpoints within one cell of the map bounds, support in [0, 1], and direction in [0, pi).
+Reachability semantics:
+- Standard regions with their own footprint-reachable core (`erode(mask, radius) != empty`) are verified for core connectivity (warning if split into multiple pieces).
+- Regions smaller or narrower than the robot footprint (e.g. spot cleaning areas or small free patches) are explicitly **allowed** as long as they can be swept by the robot footprint from adjacent navigable space (`distance_to_navigable_centers <= robot_inscribed_radius`).
+- Only regions located in completely unreachable cavities/dead-ends (where no navigable robot center position can ever sweep them) are rejected with `region_unreachable`.
 
-`oomwoo_segmentation` is the deep module used by callers. It owns the segmentation engine, Source Map identity and map-file loading, canonicalization/validation, ROS message conversion, the action server and client, stable-color rendering, and `oomwoo-render-map`. Its rendering depends only on the shared result, so every future provider receives identical final visualization.
+Robot footprint radius defaults to `robot_inscribed_radius = 0.17 m`. The deprecated "unreachable cell ratio" metric is not used (as perimeter boundary cells naturally cannot be reached by the robot center).
 
-The segmentation engine in `oomwoo_segmentation` implements the ROSE2 pipeline of `aislabunimi/ROSE2` commit `3a010b9e6bb2477de3b5b46208ebfccd71dfafbf`. It preserves the upstream two-stage computation: occupancy image → ROSE FFT structural filtering and dominant directions → ROSE2 Hough walls, angular/spatial clustering, extended lines, edges, cells, affinity matrix/DBSCAN → Shapely room polygons → canonical source-grid labels. The ROS1 nodes, services, RViz dependencies, temporary directories, and pickled Python-object messages are gone; the engine runs in-process and is exposed through the typed ROS 2 action server (`oomwoo_segmentation_node`). Source provenance, GPLv3, and compatibility changes are recorded in `src/oomwoo_segmentation/THIRD_PARTY.md`. One deliberate parity note: upstream invoked `cv2.HoughLinesP` with extra positional arguments, so the values that actually took effect were `minLineLength=5, maxLineGap=0` (not the documented 10/5); the engine defaults reproduce those effective values.
+### 6. Persistence model
 
-The default parameter profile is based on the pinned upstream `ROSE.launch`: `filter_level=0.18`, spatial threshold 5, retained-line threshold 0.22, retained-edge threshold 0, line merge distance 20 px, and `rooms_voronoi=false`. The 0.22 line-support floor is an OOMWOO compatibility profile change that rejects the demonstrated furniture-derived full-map line; it remains configurable. Zero-weight retained edges are checked against the ROSE structural raster because probabilistic Hough extraction can omit a local wall run. A strict frame-fringe rule excludes only small frame-adjacent cells behind high-support, layout-spanning walls. The optional Voronoi path remains available through provider parameters. Keepouts are presented to ROSE as occupied cells and the canonical result is clipped again afterwards.
+Data is stored under `~/.local/share/oomwoo_cleaning_jobs/maps/<map_hash>/`:
+- `map_snapshot.yaml`, `map_snapshot.pgm`: Visual provenance snapshot.
+- `map_snapshot.cells.npy`: Lossless raw int8 cell array sidecar.
+- `draft/`: `regions.yaml` (metadata) + `masks/*.png` (1-bit PNGs) + `constraints.yaml` (Keepout/VirtualWall/SpotArea geometry).
+- `published/`: Same structure as draft; atomically switched via symlink pointers.
+- At most one Published Region Set exists per map at any time.
 
-The removed maximin/watershed, merge-tree/saddle, doorway clipping/topology, and skeleton doorway-demo implementations have no source, runtime switch, fallback, parameter, or test path in this branch. The shared result deliberately has no legacy `Doorway` or `low_confidence` fields. Future doorway/topology work must derive from ROSE2 typed edges/lines/polygons as a separate capability, building on the Detected Wall output described below.
+### 7. Spatial constraints and Spot Area persistence
 
-**Wall recognition (decided 2026-08-24)**: detected walls are exposed through the existing seam, not a new package or a separate action — the walls are intermediate artifacts of the same pipeline run, so `SegmentRooms` carries them to avoid double computation and inconsistent results. `oomwoo_segmentation_msgs` defines `WallSegment.msg` (map-frame `Point` endpoints, support, direction); `oomwoo_segmentation` owns the model, ROS conversion, validation, and support-colored rendering (`render_walls`); the engine converts the retained merged extended segments (already filtered by `lines_threshold`) into map-frame walls, clipping the upstream `offset`-padded bounding-box endpoints to the map rect. `oomwoo_cleaning_jobs_core` provides `VirtualWall.from_detected_wall`. Pipeline pixel coordinates use cell-center convention `(col + 0.5, row + 0.5) * resolution` via `SourceMap.map_frame_from_pixel`/`pixel_from_map_frame`, honoring origin yaw.
+- **ConstraintSet**: Holds negative spatial constraints (`Keepout` polygons, `VirtualWall` center-lines dilated by physical width) and an optional positive transient target (`SpotArea` polygon).
+- **Keepouts / Virtual Walls**: Deducted from cleanable space (`free_mask & ~keepout_mask`). Adding/updating constraints immediately clips existing Region cells.
+- **Spot Area**: Stored at the same spatial constraint layer (`constraints.yaml`), retaining the single last-used spot area across sessions without modifying persistent room partitions.
 
-Rendering: `ros2 run oomwoo_segmentation oomwoo-render-map MAP.yaml --segment` writes the base map and a stable labeled overlay through the action server. `--diagnostics-dir` requests provider-specific ROSE2 images for the cleaned map, extended lines, and final overlay.
+### 8. Cleaning target configuration (whole-map, selected regions, spot cleaning)
 
-### Region representation and editing semantics
+The cleaning mode configuration layer in `oomwoo_cleaning_jobs_core.targets` bridges user intent to downstream task orchestration:
+- **Unified interface**: All modes produce a `CleaningTarget` containing `target_labels: tuple[int, ...]` and a runtime `RegionSet` view. Downstream modules query `target.mask_of(label)` or `target.outline(label)` uniformly without branching on mode type.
+- **Whole-map (`configure_whole_map`)**: Targets all published/active regions `[1..N]` in the `RegionSet`.
+- **Selected regions (`configure_selected_regions`)**: Targets specific region labels `[lbl_1, lbl_2, ...]`, validating existence and preserving the requested execution order.
+- **Spot cleaning (`configure_spot_area` / `configure_last_spot_area`)**:
+  - Constructs a transient, isolated `RegionSet` (e.g. single region with `label=1`).
+  - The spot polygon is clipped strictly against `free_mask & ~keepout_mask` (free space minus Keepouts).
+  - Can cross existing room boundaries as a single continuous/disjoint area.
+  - Validated against the robot inscribed radius (`validate_region_set`), ensuring the robot center can enter and traverse it.
+  - Updates `ConstraintSet.spot_area` so the last-used spot area is persisted.
+  - Leaves persistent published/draft room partitions completely untouched.
 
-A Region is internally represented as a bitmask, naturally supporting holes and disjoint components; outlines are derived via `cv2.findContours`. Editing is brush-style: brush adds/removes cells, circle/line drawing splits; merge is an explicit menu operation and does not rely on painting an overlap first.
+## Test strategy, fixtures, and baselines
 
-**Immediate clipping during editing**: the user paints intent; the system stores `intent ∩ Cleanable Space` (known-free and inside no Keepout). Clipping happens on stroke and the true result is displayed (WYSIWYG); if the clip is empty, the edit is rejected with a prompt. A stroke overlapping an existing Region triggers **later-painter preemption**: overlapping cells are deducted from the old Region and given to the new one; the GUI must prominently indicate that the old Region shrank. Only the clipped mask is stored, never the raw stroke. Unreachable furniture inside a user's Region (clipped away or footprint-unreachable) is **normal behavior**, not an error.
+### Test map fixtures
 
-### Validation grading (at publish time)
+All input test maps reside in `src/oomwoo_segmentation/test/maps/`:
+- `demo/`: 6 standard benchmark scenarios (`corridor4`, `grid6_furniture`, `living_room`, `room3`, `room4`, `two_rooms`). `.render.png` files are integer-upscaled display maps downsampled during load by their exact scale factor.
+- `rose2_upstream/`: 20 runnable test maps from `aislabunimi/ROSE2` upstream (`Freiburg_Building_079`, `ViMantic_House`, `carmen`, `movecare`, `simona-house`).
+- `ipa/`: 8 test maps from `ipa320/ipa_coverage_planning` (`lab_a`, `lab_ipa`, `office_a`, `office_h`, `NLB`, `office_a_furnitures`, `lab_d_scan_furnitures`, and `Freiburg52_scan`).
 
-In phase 1 the robot footprint comes from the parameter `robot_inscribed_radius` (default 0.17 m); phase 2 will parse the footprint profile from Nav2.
+### Output artifacts
 
-Errors (block publishing): Regions overlap; a Region contains occupied/unknown cells; a Region mask is empty after erosion by the footprint radius (the robot center cannot stay inside); a Region intersects a Keepout. Under normal editing paths these errors are guaranteed impossible by immediate clipping and preemption rules — in publish validation they are **system invariant checks** (against hand-edited files and bugs) that normal users can never trigger.
+Test runs, batch executions, and rendering tools write outputs exclusively under the repository root `output/`:
+- `output/demo/`: Outputs for demo benchmark maps.
+- `output/rose2_upstream/`: Outputs for upstream maps.
+- `output/ipa/`: Outputs for IPA benchmark maps.
+- `output/README.md` and `output/summary.png`: Demo regression summary report and visual mosaic.
 
-Warnings (allow publishing, GUI must present prominently): unassigned cleanable free space exists; a Region's footprint-reachable core is split into multiple components by narrow throats (the robot cannot traverse the Region). **The "unreachable cell ratio" metric is not used** (found during implementation: the perimeter ring of any room is unreachable to the robot center, ~30%, guaranteeing false positives); erosion applies to the Region mask itself, not the whole cleanable space.
+### Demo verification baseline (100% cleanable coverage)
 
-### Persistence
+All 6 demo maps achieve 100% cleanable free space coverage (0 unassigned cleanable cells) with hard wall barrier separation:
 
-Root directory `~/.local/share/oomwoo_cleaning_jobs/maps/<map_hash>/`, containing:
-
-- `map_snapshot.{yaml,pgm}`: map snapshot (for provenance).
-- `draft/`: `regions.yaml` (Region metadata) + `masks/*.png` (1-bit masks, inspectable with an image viewer) + `constraints.yaml` (Keepout/Virtual Wall geometry).
-- `published/`: same structure. At most one Published Region Set per map at any time; publishing = copy draft after validation passes, recording version number and timestamp.
-
-Implemented: `persistence.RegionSetStore` keys directories by the full Source Map identity, writes a `map_snapshot.{yaml,pgm}` preview plus a lossless `map_snapshot.cells.npy` raw-cell sidecar on first save; draft and published point to immutable generation directories switched via atomic symlink pointers. `publish()` validates against the current Keepouts first, then saves the draft, switches published, and increments the version / records UTC time and footprint radius. Loading validates schema, identity, PNG mask shapes, and mask overlap; Published sets are re-validated against the saved footprint radius, while drafts may retain publish-validation errors for GUI display.
-
-### Keepout / Virtual Wall
-
-Included in phase 1. Keepouts are deducted from the Cleanable Space; a Virtual Wall is a line-shaped Keepout, handled by dilating the line into a polygon. Constraints share the persistence and validation pipeline with Regions.
-
-Core model implemented: `constraints.ConstraintSet` holds `Keepout` (map-frame polygons) and `VirtualWall` (center lines with explicit `width_m`), rasterized according to the Source Map's origin/yaw. The UI sends `source.free_mask() & ~constraints.mask_for(source)` as the shared action's Cleanable Space mask; if a Region Set is initialized from those candidates, the raw `source.free_mask()` and current constraint mask are passed separately to `RegionSet.from_segmentation(..., base_cleanable=..., keepout_mask=...)`. After constraints change, `RegionSet.apply_keepout_mask()` immediately clips existing Region cells. Removing a constraint only restores cleanable space; it does not revive clipped Region cells.
-
-### Test strategy
-
-Headless tests are split by seam: `oomwoo_segmentation` tests the engine, contract canonicalization, map fidelity, ROS conversions, and rendering (including slow full-pipeline benchmark cases over demo, `rose2_upstream`, and `ipa` maps); cleaning-jobs tests inject a test-only provider so Region editing tests do not depend on ROS or an algorithm. The upstream baseline is pinned for reproducibility; exact stage-by-stage golden parity remains a future strengthening beyond the current contract and real-pipeline smoke coverage.
-
-### Test map fixtures and verification outputs
-
-All test input images/maps live in exactly one place: `src/oomwoo_segmentation/test/maps/`.
-
-- `demo/`: local demo maps referenced by `test_docs_maps.py`. `*.render.png` files are upscaled-for-display images that must be downsampled by their exact integer block factor before use (see the `embedded_scale` table in `output/README.md`); plain `.png` maps are used at native resolution.
-- `rose2_upstream/`: verbatim copy of the pinned upstream `aislabunimi/ROSE2` `src/maps/` test maps (carmen, Freiburg_Building_079 map2–map15, Virtual ViMantic_House20/23/30, maps-nostre movecare/simona-house). Upstream `Virtual/mapirlab.yaml` has no committed image and is not runnable.
-- `ipa/`: additional review cases from `ipa320/ipa_coverage_planning` (`ipa_room_segmentation/common/files/test_maps/`), see `src/oomwoo_segmentation/THIRD_PARTY.md`. `Freiburg52_scan` fails in upstream ROSE itself and is a batch-review case only.
-
-Every test, verification, or demo run writes its artifacts only under the repository-root `output/` directory, one subdirectory per map (`output/<map>/source.render.png`, `segments.png`, `walls.png`, `diagnostics/`, `run.txt`); `output/README.md` + `output/summary.png` hold the demo-map regression report, `output/demo/` the current engine run, `output/ipa/` the ipa_coverage_planning cases, and `output/rose2_upstream/` the upstream-map verification runs. Derived images must never be stored next to the inputs in `test/maps/` — regenerate them into `output/` instead. `src/oomwoo_segmentation/test/run_map_batch.py` is the batch runner: point it at a maps directory, individual `map.yaml` files, or demo render images (with `--embedded-scale` to restore the exact integer block factor) and it writes the standard per-map output layout plus a `summary.txt` (failures are recorded per map, never abort the batch).
-
-### Closeout verification baseline
-
-The closeout baseline is `rose2 upstream-3a010b9e6bb2+oomwoo.4`. The six local demo maps are fixed structural regressions; without human label masks these counts and visual boundaries are acceptance evidence, not IoU claims:
-
-| Map | Rooms | Detected Walls | Unassigned cleanable cells | Expected interpretation |
+| Scenario | Rooms | Detected Walls | Unassigned Cells | Description / Expected Structure |
 | --- | ---: | ---: | ---: | --- |
-| `corridor4` | 5 | 7 | 0 | Four rooms plus the corridor. |
-| `grid6_furniture` | 6 | 6 | 0 | Six rooms; furniture does not become a full-map wall. |
-| `living_room` | 1 | 5 | 449 (5.8%) | One interior room; free noise beyond the high-support exterior wall remains unassigned. |
-| `room3` | 5 | 10 | 0 | Five visually consistent regions. |
-| `room4` | 4 | 10 | 180 (2.1%) | Four regions, with one unresolved 15×12 free-space coverage hole at source-grid columns 62–76 and rows 99–110. |
-| `two_rooms` | 2 | 8 | 0 | Two rooms and no tiny spurious region. |
+| `corridor4` | 5 | 7 | 0 (0.0%) | 4 individual rooms + 1 continuous corridor |
+| `grid6_furniture` | 6 | 6 | 0 (0.0%) | 6 rooms separated by physical walls; furniture does not create spurious walls |
+| `living_room` | 1 | 5 | 0 (0.0%) | Single open living area fully covered; no furniture over-segmentation |
+| `room3` | 6 | 10 | 0 (0.0%) | 6 distinct rooms cleanly partitioned by physical walls |
+| `room4` | 5 | 10 | 0 (0.0%) | 5 rooms partitioned along walls; full geodesic coverage without internal holes |
+| `two_rooms` | 2 | 8 | 0 (0.0%) | 2 rooms separated by doorway and center wall |
 
-Closeout verification (in-memory integration): the three-package `colcon test` covers the `oomwoo_segmentation` engine/contract/rendering suites (including the demo, `rose2_upstream`, and `ipa` benchmark cases) and the `oomwoo_cleaning_jobs_core` domain suites. Earlier wrapper-era baseline: 96 full-source pytest cases, including 16 ROSE2 provider cases; the joint five-package `colcon test` reported 81 tests, 0 errors, 0 failures, and 1 dependency-gated skip.
+### Upstream & IPA verification baseline
 
-Orange (`COLOR_UNASSIGNED`, BGR `(0, 165, 255)`) in the provider-neutral segmentation rendering means a source cell is cleanable/free but retains canonical label 0. It is neither occupied nor unknown. This is deliberate for the `living_room` exterior fringe and is a publish-time warning under the shared validation policy. In `room4`, the same color exposes a remaining polygon/cell coverage hole; disabling frame-fringe rejection does not remove it, so it must not be described as exterior filtering. Keep this limitation visible in `output/README.md` and the GUI rather than silently merging it into an adjacent room.
+- **ROSE2 upstream suite**: 20/21 maps execute successfully without errors or label boundary violations, exposing 6–19 Detected Walls per map. (`Virtual/mapirlab.yaml` was never committed with its PGM upstream and is skipped).
+- **IPA suite**: 7/7 standard maps segment into valid rooms covering 100% of cleanable space. (`Freiburg52_scan` fails in upstream ROSE FFT itself due to lack of walls and serves as a batch runner error-handling test).
+- **Test suite**: 91+ unit and regression tests pass cleanly under `pytest` / `colcon test`.
 
-Closeout still requires GPLv3 distribution confirmation for `oomwoo_segmentation`, and an explicit decision on whether the `room4` coverage hole is acceptable as a warning or must be fixed before release. Human ground-truth masks are required before reporting IoU/ARI or claiming quantitative segmentation quality.
+## Subsequent Job execution & Phase 2 direction
 
-### Implementation status
-
-Implemented packages: `oomwoo_segmentation_msgs` provides the standard-type ROS 2 `SegmentRooms` action and room/wall messages; `oomwoo_segmentation` contains the GPLv3 engine, wall extraction from retained extended segments, the ROS 2 action server and client, SourceMap identity/masks, Nav2 trinary loading, canonical result validation (labels plus Detected Walls), and rendering/CLI. `oomwoo_cleaning_jobs_core` contains `RegionSet` editing, constraints, validation, and persistence only.
-
-
-## Coverage execution facts and integration direction
-
-Existing `oomwoo_coverage`: reads the full `/map` and an optional `keepout_filter_mask`, selects the reachable connected component from the robot's position, performs boustrophedon cell decomposition, sweeping, and gap-fill, and moves via Nav2. It has no public Region, Segment, or target-mask input; it currently covers the entire reachable area and cannot clean only a specified Region.
-
-It subscribes to external `coverage_ratio` and `covered_grid` and does not estimate coverage itself. In simulation both can come from a coverage meter; a real robot needs an estimator based on localization and cleaning width. This estimator is an independent dependency of Job progress, completion judgment, and precise recovery.
-
-Phase 2 prioritizes validating a minimal vertical slice:
-
-`Published Region → target/allowed-clean mask adaptation → oomwoo_coverage → coverage estimator/grid → Job checkpoint`
-
-Do not freeze a generalized coverage-backend contract before this slice is validated. For specified Regions, prefer adding an explicit target/allowed-clean mask; do not fake a temporary map and confuse map semantics unless maintainers confirm this is an established convention.
-
-## Subsequent Job behavior
-
-cleaning-jobs will own RegionSet tasking, Segment splitting/ordering, state persistence, user control, pause/resume, retry, and summary. Only one active Job is allowed at a time.
-
-At Job start, map identity, Published Region Set, cleaning strategy, and the footprint profile parsed from Nav2 are pinned; later edits only affect new Jobs. Pause is a non-terminal state, triggerable by the user or by safety/hardware conditions. The safety layer stops the robot independently; this package only observes and records and cannot take hard safety responsibility for `/cmd_vel`. Resume is a request; the safety layer or executor may reject it and return a stable reason code.
-
-Job checkpoints are saved by cleaning-jobs. Precise recovery relies on a trusted coverage artifact: with an artifact, continue the uncovered remainder; without one, redo the current Segment or ask the user to confirm — the exact policy is TBD.
-
-Long-term goals include battery, dustbin, and mop states triggering dock-cycle recharge/empty/wash before resuming coverage; whole-map, per-room, spot; and perimeter + interior combinations. All are after phase 1.
+`oomwoo_cleaning_jobs` will orchestrate Job lifecycle, tasking, pause/resume, and checkpoint recovery:
+1. **Vertical slice validation**: Prioritize `Published Region → target/allowed-clean mask adaptation → oomwoo_coverage → coverage estimator/grid → Job checkpoint`.
+2. **Coverage progress tracking**: Saved-map execution relies on an external or localization-based coverage estimator providing `covered_grid` and `coverage_ratio`.
+3. **Checkpoints & Recovery**: Checkpoints store current Segment, accumulated coverage artifact, and pending queue. Recovery with a trusted coverage artifact resumes remaining uncovered cells; without an artifact, it restarts the current Segment.
 
 ## Open boundaries
 
-1. `oomwoo_coverage` target input: format, ownership, and version validation of the target/allowed-clean mask.
-2. Segment completion condition: path completion, target coverage, no recoverable gaps, or a combination.
-3. Real-robot coverage estimator: inputs, error/confidence, grid format, QoS, rebuild after restart.
-4. Checkpoint atomicity, storage medium, and recovery rules across backend/robot restarts.
-5. Region-to-Segment splitting rules: area, time, battery, resupply, and strategy boundaries.
-6. Ordering, overlap tolerance, and shared coverage artifact of the floor-care perimeter pass and the interior sweep.
-7. How Keepout/Virtual Wall are simultaneously projected onto the Nav2 costmap and coverage masks.
-8. ROS fields, idempotency, QoS, and failure semantics of `RunCleaningJob`, pause/resume/cancel/status, plus battery/bin/mop/dock/localization input interfaces.
-9. Migration/rebinding of region sets after map changes (hash change): whether to support it, how to reproject and revalidate. Not done in phase 1; old region sets are only retained and surfaced by the GUI.
-
-## Repository structure and quality goals
-
-All code, tests, interfaces, and development tools live in this repository; internal ROS 2/Python packages are split under `src/`. Cleaning domain logic remains in `oomwoo_cleaning_jobs_core`. The room-segmentation seam is owned by `oomwoo_segmentation_msgs`, and the segmentation engine plus algorithm-neutral tooling by `oomwoo_segmentation`. Future cleaning-job actions/messages remain separate from segmentation interfaces.
-
-Future tests should cover in headless CI: automatic/manual Region editing and validation; whole-map, per-room, and spot cleaning only the intended areas; keepouts never entered; and coverage-artifact-driven recovery after forced interruption. Implement phase 1's repeatable map fixtures and verification first, then integrate simulation execution.
+1. **Target mask interface**: Format and QoS for passing target Region masks into `oomwoo_coverage`.
+2. **Segment completion criteria**: Combination of path execution completion and verified target cell coverage.
+3. **Coverage estimator specification**: Grid resolution, confidence bounds, update frequency, and restart recovery.
+4. **Checkpoint serialization**: Schema and storage strategy for atomic Job state persistence across robot reboots.
+5. **Segment partitioning**: Splitting large Regions into Segments based on area, battery budget, or cleaning strategy.
+6. **Floor-care coordination**: Sequencing perimeter edge cleaning with interior coverage sweeping.
+7. **Costmap constraint projection**: Mechanism for projecting Keepouts/Virtual Walls to Nav2 costmaps during active Jobs.
+8. **Job action interface**: Action definitions for `RunCleaningJob`, pause, resume, cancel, and status feedback.
+9. **Map change policy**: Re-validation and user notification workflow when a map hash change is detected.

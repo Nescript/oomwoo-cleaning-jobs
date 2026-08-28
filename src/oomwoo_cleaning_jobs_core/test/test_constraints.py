@@ -7,7 +7,7 @@ import pytest
 
 from fixtures import fake_segmentation, make_two_rooms_map
 
-from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout, VirtualWall
+from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout, SpotArea, VirtualWall
 from oomwoo_cleaning_jobs_core.regions import UNASSIGNED, RegionSet
 from oomwoo_segmentation.source_map import FREE, SourceMap
 from oomwoo_cleaning_jobs_core.validation import validate_region_set
@@ -142,3 +142,45 @@ def test_virtual_wall_from_detected_wall():
     assert converted.end == (3.0, 2.0)
     assert converted.width_m == 0.1
     assert len(converted.polygon) == 4
+
+
+def test_spot_area_creation_and_rasterization():
+    source = make_two_rooms_map()
+    spot = SpotArea.from_box(center=_map_point(source, 30, 20), width_m=0.5, height_m=0.5,
+                             identifier='my_spot', name='Dinner Mess')
+
+    assert spot.identifier == 'my_spot'
+    assert spot.name == 'Dinner Mess'
+    assert len(spot.vertices) == 4
+
+    constraints = ConstraintSet(spot_area=spot)
+    # mask_for is Keepout mask (negative constraints) - spot_area is positive and should not appear in mask_for
+    assert not constraints.mask_for(source).any()
+
+    # spot_mask_for returns the rasterized positive target
+    spot_mask = constraints.spot_mask_for(source)
+    assert spot_mask is not None
+    assert spot_mask[30, 20]
+    assert not spot_mask[10, 10]
+
+
+def test_spot_area_validation_and_identifier_uniqueness():
+    with pytest.raises(ValueError, match='identifier'):
+        SpotArea(identifier='', vertices=((0.0, 0.0), (1.0, 0.0), (1.0, 1.0)))
+
+    with pytest.raises(ValueError, match='three vertices'):
+        SpotArea(identifier='too_few', vertices=((0.0, 0.0), (1.0, 0.0)))
+
+    with pytest.raises(ValueError, match='collinear'):
+        SpotArea(identifier='line', vertices=((0.0, 0.0), (1.0, 1.0), (2.0, 2.0)))
+
+    with pytest.raises(ValueError, match='positive finite'):
+        SpotArea.from_box(center=(0.0, 0.0), width_m=-1.0, height_m=0.5)
+
+    # Identifier collision with keepout
+    with pytest.raises(ValueError, match='globally unique'):
+        ConstraintSet(
+            keepouts=(Keepout('same_id', ((0.0, 0.0), (1.0, 0.0), (0.5, 1.0))),),
+            spot_area=SpotArea('same_id', ((2.0, 2.0), (3.0, 2.0), (2.5, 3.0))),
+        )
+

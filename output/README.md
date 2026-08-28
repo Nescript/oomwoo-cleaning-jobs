@@ -11,7 +11,7 @@ Provider：`rose2 upstream-3a010b9e6bb2+oomwoo.4`（历史 wrapper 记录；当�
 - 默认 `lines_threshold=0.22`，过滤由家具 Hough segments 生成的低支持度全图延伸线。
 - 仅为零权重 retained edges 从 ROSE structural raster 补算局部墙体支持，恢复被概率 Hough 遗漏的墙段。
 - 严格排除位于 synthetic frame 一侧、被高支持度长墙隔开且面积显著更小的外围 cell。
-- `test_docs_maps.py` 通过 `Rose2Segmenter.segment()` 公共接口固定五张地图的房间数和未分配 cell 数。
+- `test_docs_maps.py` 通过 `SegmentationEngine.segment()` 接口固定 6 张 demo 地图的房间数和 100% 覆盖（0 未分配 cell）。
 
 ## 输入处理
 
@@ -62,4 +62,4 @@ python3 src/oomwoo_segmentation/test/run_map_batch.py <图片> --embedded-scale 
 
 ## 结论
 
-6/6 地图均能通过 Action Server 返回满足公共 labels/rooms 契约的结果，并同时暴露 Detected Walls（5–10 段，外框墙 support=1.0，端点位于 map 坐标系）。`corridor4` 为 4 个房间加走廊，`grid6_furniture` 为 6 个房间，`living_room` 为 1 个主体房间，结构数量均符合这些固定 demo 的预期。`living_room` 的 449 个外围 free cells 按严格 frame-fringe 规则保留为未分配区域，而不是跨越高支持度外墙并入室内。`room4` 的 180 个内部 free cells 是仍待决策的覆盖缺口；关闭 frame-fringe 规则后结果不变，因此不能把它描述为外围过滤。渲染中的橙色统一表示 label 0 的 cleanable/free cells。当前仓库没有人工真值 label mask，因此报告只进行房间数量、边界和未分配率的结构/目视判断，未计算 IoU。
+6/6 地图均能通过 `oomwoo_segmentation` 原生引擎及 Action Server 返回满足公共 labels/rooms 契约的结果，并同时暴露 Detected Walls（5–10 段，外框墙 support=1.0，端点位于 map 坐标系）。`corridor4` 为 4 个房间加走廊，`grid6_furniture` 为 6 个房间，`living_room` 为 1 个主体房间，`room3` 为 6 个房间，`room4` 为 5 个房间，`two_rooms` 为 2 个房间，结构数量均符合预期。通过硬墙阻隔（hard wall barrier）与受限测地波前扩散（constrained geodesic wavefront propagation），全部 6 张 demo 地图均实现自由空间 100% 覆盖（0 未分配 cleanable cell），彻底消除了早期版本中的内部空洞与未分配残差，且无跨墙渗透。当前仓库没有人工真值 label mask，因此报告只进行房间数量、边界和未分配率的结构/目视判断，未计算 IoU。

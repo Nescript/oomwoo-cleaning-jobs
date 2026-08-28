@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 import yaml
 
-from .constraints import ConstraintSet, Keepout, VirtualWall
+from .constraints import ConstraintSet, Keepout, SpotArea, VirtualWall
 from oomwoo_segmentation.source_map import FREE, OCCUPIED, UNKNOWN, SourceMap
 
 from .regions import RegionSet
@@ -206,7 +206,7 @@ class RegionSetStore:
 
 
 def _encode_constraints(constraints: ConstraintSet) -> dict:
-    return {
+    data = {
         'schema_version': SCHEMA_VERSION,
         'keepouts': [{'identifier': k.identifier, 'vertices': [list(p) for p in k.vertices]}
                      for k in constraints.keepouts],
@@ -214,17 +214,33 @@ def _encode_constraints(constraints: ConstraintSet) -> dict:
                            'end': list(w.end), 'width_m': w.width_m}
                           for w in constraints.virtual_walls],
     }
+    if constraints.spot_area is not None:
+        data['spot_area'] = {
+            'identifier': constraints.spot_area.identifier,
+            'vertices': [list(p) for p in constraints.spot_area.vertices],
+            'name': constraints.spot_area.name,
+        }
+    return data
 
 
 def _decode_constraints(data: dict) -> ConstraintSet:
     if data.get('schema_version') != SCHEMA_VERSION:
         raise ValueError('unsupported constraints schema_version')
+    spot_data = data.get('spot_area')
+    spot_area = None
+    if spot_data is not None:
+        spot_area = SpotArea(
+            identifier=spot_data['identifier'],
+            vertices=tuple(tuple(p) for p in spot_data['vertices']),
+            name=spot_data.get('name', 'Spot Area'),
+        )
     return ConstraintSet(
         keepouts=tuple(Keepout(item['identifier'], tuple(tuple(p) for p in item['vertices']))
                        for item in data.get('keepouts', [])),
         virtual_walls=tuple(VirtualWall(item['identifier'], tuple(item['start']),
                                          tuple(item['end']), item['width_m'])
                             for item in data.get('virtual_walls', [])),
+        spot_area=spot_area,
     )
 
 

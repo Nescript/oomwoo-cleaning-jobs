@@ -2,14 +2,15 @@
 grading").
 
 **Error** (blocks publishing): a Region contains occupied/unknown cells;
-a Region mask eroded by the footprint radius becomes empty (the robot
-center can never stay inside the Region, so it can never enter); a Region
+a Region cannot be reached by the robot footprint from any navigable position
+in cleanable space (e.g. trapped in narrow unreachable cavities); a Region
 intersects a Keepout. In normal editing flows, immediate clipping and
 preemption guarantee these never happen — they are **system invariant
-checks** (against hand-edited files and bugs). Region overlap is
-structurally impossible in the in-memory model (single labels array);
-the overlap check `check_masks_overlap` is used at persistence load time
-(#5, per-Region PNG masks).
+checks** (against hand-edited files and bugs). Regions smaller than the robot
+footprint (such as spot areas) are allowed as long as they can be reached and
+covered from adjacent navigable space. Region overlap is structurally impossible
+in the in-memory model (single labels array); the overlap check
+`check_masks_overlap` is used at persistence load time (#5, per-Region PNG masks).
 
 **Warning** (publishing allowed, GUI must display prominently): unassigned
 cleanable free space exists; a Region's footprint-reachable core is split
@@ -91,6 +92,20 @@ def validate_region_set(
             level=LEVEL_ERROR, code='empty_region_set',
             message='Region Set is empty; nothing to publish'))
 
+    # Pre-compute global navigable centers (where the robot center can physically be positioned)
+    # and global sweep reachable space (cells within robot_inscribed_radius of any navigable center).
+    navigable_centers = (
+        cv2.distanceTransform(cleanable.astype(np.uint8), cv2.DIST_L2, 5) * res
+    ) >= robot_inscribed_radius
+
+    if not navigable_centers.any():
+        sweep_reachable = np.zeros_like(cleanable, dtype=bool)
+    else:
+        dist_to_navigable = (
+            cv2.distanceTransform((~navigable_centers).astype(np.uint8), cv2.DIST_L2, 5) * res
+        )
+        sweep_reachable = (dist_to_navigable <= robot_inscribed_radius) & cleanable
+
     for info in regions:
         mask = region_set.mask_of(info.label)
         # Error: contains occupied/unknown cells (invariant)
@@ -99,21 +114,14 @@ def validate_region_set(
             report.issues.append(ValidationIssue(
                 level=LEVEL_ERROR, code='region_outside_cleanable', region=info.label,
                 message=f'Region "{info.name}" contains {dirty} occupied/unknown cells'))
-        # Footprint-reachable core = Region mask eroded by the radius (the
-        # robot center must be able to stay inside the Region; the Region
-        # itself is eroded, not the whole cleanable space)
-        core = (cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5) * res
-                ) >= robot_inscribed_radius
-        # Error: empty after erosion (can never be entered)
-        if not core.any():
-            report.issues.append(ValidationIssue(
-                level=LEVEL_ERROR, code='region_unreachable', region=info.label,
-                message=f'Region "{info.name}" is empty after erosion by footprint '
-                        f'radius {robot_inscribed_radius} m; robot cannot enter'))
-        else:
-            # Warning: reachable core split into multiple pieces by narrow
-            # throats (robot cannot traverse the Region)
-            components, n = ndimage.label(core, structure=np.ones((3, 3)))
+
+        # Footprint-reachable core within the Region itself
+        self_core = (cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5) * res
+                     ) >= robot_inscribed_radius
+
+        if self_core.any():
+            # Standard region: check if reachable core is split into multiple pieces by narrow throats
+            components, n = ndimage.label(self_core, structure=np.ones((3, 3)))
             counts = np.bincount(components.ravel())
             pieces = int((counts[1:] >= MIN_CORE_COMPONENT_CELLS).sum())
             if pieces > 1:
@@ -122,6 +130,16 @@ def validate_region_set(
                     region=info.label,
                     message=f'Region "{info.name}" footprint-reachable core is split '
                             f'into {pieces} pieces (internal passage narrower than the robot)'))
+        else:
+            # Region is smaller or narrower than the robot footprint (e.g. a small spot area).
+            # It is allowed if the robot can reach/cover it from a navigable position in cleanable space.
+            # It is an Error only if no navigable position can sweep any part of this region.
+            if not (mask & sweep_reachable).any():
+                report.issues.append(ValidationIssue(
+                    level=LEVEL_ERROR, code='region_unreachable', region=info.label,
+                    message=f'Region "{info.name}" cannot be reached by robot footprint '
+                            f'(radius {robot_inscribed_radius} m) from any navigable position'))
+
         # Error: intersects a Keepout (invariant; wired in #6)
         if keepout_mask is not None:
             overlap = int((mask & keepout_mask).sum())
