@@ -1,9 +1,12 @@
 """validation severity-grading tests."""
 
+import math
+
 import numpy as np
 
 from fixtures import fake_segmentation, make_two_rooms_map
 
+from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, VirtualWall
 from oomwoo_cleaning_jobs_core.regions import RegionSet
 from oomwoo_cleaning_jobs_core.validation import (
     LEVEL_ERROR,
@@ -11,6 +14,31 @@ from oomwoo_cleaning_jobs_core.validation import (
     check_masks_overlap,
     validate_region_set,
 )
+
+
+def _map_point(source, row, col):
+    """Map-frame center point of a given cell, honoring the SourceMap yaw."""
+    x, y, yaw = source.origin
+    local_x = (col + 0.5) * source.resolution
+    local_y = (row + 0.5) * source.resolution
+    return (
+        x + math.cos(yaw) * local_x - math.sin(yaw) * local_y,
+        y + math.sin(yaw) * local_x + math.cos(yaw) * local_y,
+    )
+
+
+def _sealed_doorway_setup():
+    """Two-room map with a Virtual Wall sealing the doorway (rows 35-44, col 30)."""
+    source = make_two_rooms_map()
+    constraints = ConstraintSet(
+        virtual_walls=(VirtualWall('door-seal', _map_point(source, 34, 30),
+                                   _map_point(source, 45, 30), source.resolution),))
+    band = constraints.mask_for(source)
+    result = fake_segmentation(source, cleanable_mask=source.free_mask() & ~band)
+    region_set = RegionSet.from_segmentation(
+        result, resolution=source.resolution, origin=source.origin,
+        base_cleanable=source.free_mask(), keepout_mask=band)
+    return source, region_set, band
 
 
 def _make_region_set():
@@ -166,3 +194,81 @@ def test_check_masks_overlap():
     mask_b[15:25, 15:25] = False
     mask_b[30:40, 30:40] = True
     assert check_masks_overlap({1: mask_a, 2: mask_b}) == []
+
+
+def test_seeded_validation_flags_enclosed_region_and_preserves_cells():
+    """Dock-seeded mode: the room behind a sealed doorway is enclosed; its
+    Region keeps its cells but is rejected with region_enclosed."""
+    source, rs, band = _sealed_doorway_setup()
+    right_label = [i.label for i in rs.regions() if rs.mask_of(i.label)[40, 50]][0]
+    left_label = [i.label for i in rs.regions() if rs.mask_of(i.label)[40, 15]][0]
+    right_cells_before = int(rs.mask_of(right_label).sum())
+
+    report = validate_region_set(
+        rs, keepout_mask=band, wall_band_mask=band,
+        seed_pose=_map_point(source, 40, 15))
+
+    assert not report.ok
+    enclosed = [i for i in report.errors if i.code == 'region_enclosed']
+    assert {i.region for i in enclosed} == {right_label}
+    # Only the wall band cells were clipped; enclosed cells are preserved.
+    assert int(rs.mask_of(right_label).sum()) == right_cells_before
+    assert int(rs.mask_of(right_label).sum()) == int(
+        (rs.cleanable & (np.indices(rs.labels.shape)[1] > 30)).sum())
+    # The enclosure error replaces the generic reachability error.
+    assert 'region_unreachable' not in _codes(report, LEVEL_ERROR)
+    # A sealing wall must not raise the seals-nothing warning.
+    assert 'virtual_wall_seals_nothing' not in _codes(report, LEVEL_WARNING)
+    assert left_label not in {i.region for i in enclosed}
+
+
+def test_seeded_validation_without_walls_matches_global_semantics():
+    """With a seed but no constraints, both rooms stay reachable and clean."""
+    source, rs = _make_region_set()
+    report = validate_region_set(rs, seed_pose=_map_point(source, 40, 15))
+    assert report.ok
+    assert 'region_enclosed' not in _codes(report, LEVEL_ERROR)
+    assert 'dock_unreachable' not in _codes(report, LEVEL_ERROR)
+
+
+def test_dock_unreachable_when_seed_constrained_or_off_grid():
+    source, rs, band = _sealed_doorway_setup()
+    # Seed on the wall band itself (occupied by the constraint).
+    report = validate_region_set(rs, seed_pose=_map_point(source, 40, 30))
+    assert not report.ok
+    assert 'dock_unreachable' in _codes(report, LEVEL_ERROR)
+
+    # Seed outside the map grid.
+    far_away = (source.origin[0] + 1000.0, source.origin[1] + 1000.0)
+    report = validate_region_set(rs, seed_pose=far_away)
+    assert not report.ok
+    assert 'dock_unreachable' in _codes(report, LEVEL_ERROR)
+
+
+def test_virtual_wall_seals_nothing_warning():
+    """A wall segment in the middle of an open room seals nothing -> warning."""
+    source = make_two_rooms_map()
+    constraints = ConstraintSet(
+        virtual_walls=(VirtualWall('free-standing', _map_point(source, 40, 10),
+                                   _map_point(source, 40, 24), source.resolution),))
+    band = constraints.mask_for(source)
+    result = fake_segmentation(source, cleanable_mask=source.free_mask() & ~band)
+    rs = RegionSet.from_segmentation(
+        result, resolution=source.resolution, origin=source.origin,
+        base_cleanable=source.free_mask(), keepout_mask=band)
+
+    report = validate_region_set(
+        rs, keepout_mask=band, wall_band_mask=band,
+        seed_pose=_map_point(source, 45, 15))
+
+    assert report.ok  # warning only, publishing still allowed
+    assert 'virtual_wall_seals_nothing' in _codes(report, LEVEL_WARNING)
+    assert 'region_enclosed' not in _codes(report, LEVEL_ERROR)
+
+
+def test_wall_band_mask_shape_must_match_grid():
+    source, rs = _make_region_set()
+    import pytest
+    with pytest.raises(ValueError, match='shape'):
+        validate_region_set(rs, seed_pose=_map_point(source, 40, 15),
+                            wall_band_mask=np.zeros((2, 2), dtype=bool))
