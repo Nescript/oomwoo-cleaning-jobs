@@ -32,7 +32,8 @@ Phase 1 delivers:
 | --- | --- | --- |
 | `src/oomwoo_segmentation_msgs` | Apache-2.0 | Standard-type ROS 2 `SegmentRooms` action (`OccupancyGrid` + optional mask in, 32SC1 labels + `Room[]` + `WallSegment[]` out) and messages |
 | `src/oomwoo_segmentation` | GPL-3.0-only | Room-segmentation engine based on the pinned ROSE + ROSE2 pipeline (`engine/`), ROS 2 action server (`oomwoo_segmentation_node`) and client, Source Map model and Nav2 trinary I/O, canonical contract validation, deterministic rendering, and `oomwoo-render-map` CLI |
-| `src/oomwoo_cleaning_jobs_core` | Apache-2.0 | Region Set representation and editing (brush paint/erase/merge/split/preemption), spatial constraints (`Keepout`, `VirtualWall`, `SpotArea`), cleaning target configuration, publish validation grading, and draft/published persistence (`RegionSetStore`) |
+| `src/oomwoo_cleaning_jobs_core` | Apache-2.0 | Region Set representation and editing (brush paint/erase/merge/split/preemption), spatial constraints (`Keepout`, `VirtualWall`, `SpotArea`), cleaning target configuration, publish validation grading, draft/published persistence (`RegionSetStore`), and dock pose reference (`dock.py`) |
+| `src/oomwoo_cleaning_jobs` | Apache-2.0 | ROS 2 nodes for cleaning intent: `constraint_mask_publisher` (Nav2 keepout filter projection) and, later, job orchestration |
 
 ### Architecture and runtime boundaries
 
@@ -50,7 +51,8 @@ Phase 1 delivers:
 | Candidate Region | A Region produced by automatic segmentation or currently under editing, not yet published. |
 | Region Set | Versioned set of Regions and spatial constraints belonging to one Source Map. |
 | Published Region Set | A Region Set that has passed validation checks and is frozen for generating Jobs. |
-| Keepout / Virtual Wall | Spatial constraints persisted independently that do not alter the Source Map. A Virtual Wall is a line-shaped Keepout with explicit physical width. |
+| Keepout / Virtual Wall | Spatial constraints persisted independently that do not alter the Source Map. A Virtual Wall is a line-shaped Keepout with explicit physical width, and acts as a **sealing barrier**: together with physical walls it can enclose an area, making it unreachable from the dock — the enclosed area is the effective keep-out zone. |
+| Enclosed Area | Cleanable cells outside the dock-reachable connected component, created when Virtual Wall bands (8-connected rasters) together with physical walls seal an opening. Not an explicit constraint; never written into the Nav2 keepout mask. |
 | Detected Wall | A physical wall segment recognized by the segmentation provider (map-frame endpoints, support score, orientation). Reproducible algorithm output; never persisted directly and distinct from a Virtual Wall. |
 | Spot Area | A positive transient target polygon in the map frame (e.g. for custom small-area / spot cleaning). Retained at the constraint layer as the last-used spot area without mutating persistent room partitions. |
 | Cleaning Target | Configured cleaning task target holding a sequence of target region labels and an associated runtime RegionSet view for query by downstream job orchestration. |
@@ -110,12 +112,18 @@ Validation grades errors (blocking publication) vs warnings (informative):
 | **Error** | Regions overlap | Partition invariant violation |
 | **Error** | Region contains occupied or unknown cells | Cannot clean non-free cells |
 | **Error** | Region cannot be reached by robot footprint from any navigable position | Robot cannot reach or sweep the region from any valid pose |
+| **Error** | Region has cells inside the enclosed area (`region_enclosed`) | Virtual Walls sealed part of the Region away from the dock; cells are preserved, never silently clipped |
+| **Error** | Dock staging seed is off-grid, occupied, unknown, or constrained (`dock_unreachable`) | Robot could not leave the dock under these constraints |
 | **Error** | Region intersects a Keepout or Virtual Wall | Safety constraint violation |
 | **Error** | Region Set has 0 Regions | Empty job target |
 | **Warning** | Unassigned cleanable free space exists | Informs user of uncovered cleanable space |
 | **Warning** | Region core is split into disconnected components by narrow throats | Informs user of potential intra-region traversal bottlenecks |
+| **Warning** | Virtual Walls do not change the dock-reachable component (`virtual_wall_seals_nothing`) | Possible gaps or unclosed wall chains |
 
 Reachability semantics:
+- **Dock-seeded (when a seed pose is available)**: a 4-connected flood fill from the dock staging cell over cleanable space yields the main dock-reachable component; navigable centers are restricted to it. The seed is the undock exit pose (see `dock.py`), read from the Nav2 `opennav_docking` dock database — undock success itself proves the seed is reachable, so no navigable-center assumption is needed for it.
+- **Global fallback (no dock database / no seed)**: any navigable position in cleanable space seeds reachability, matching the pre-enclosure semantics.
+- Virtual Wall bands are rasterized 8-connected so a closed wall chain provably blocks the 4-connected flood fill (grid Jordan curve property); free space is flood-filled 4-connected.
 - Standard regions with their own footprint-reachable core (`erode(mask, radius) != empty`) are verified for core connectivity (warning if split into multiple pieces).
 - Regions smaller or narrower than the robot footprint (e.g. spot cleaning areas or small free patches) are explicitly **allowed** as long as they can be swept by the robot footprint from adjacent navigable space (`distance_to_navigable_centers <= robot_inscribed_radius`).
 - Only regions located in completely unreachable cavities/dead-ends (where no navigable robot center position can ever sweep them) are rejected with `region_unreachable`.
@@ -127,17 +135,31 @@ Robot footprint radius defaults to `robot_inscribed_radius = 0.17 m`. The deprec
 Data is stored under `~/.local/share/oomwoo_cleaning_jobs/maps/<map_hash>/`:
 - `map_snapshot.yaml`, `map_snapshot.pgm`: Visual provenance snapshot.
 - `map_snapshot.cells.npy`: Lossless raw int8 cell array sidecar.
-- `draft/`: `regions.yaml` (metadata) + `masks/*.png` (1-bit PNGs) + `constraints.yaml` (Keepout/VirtualWall/SpotArea geometry).
-- `published/`: Same structure as draft; atomically switched via symlink pointers.
+- `draft/`: `regions.yaml` (metadata) + `masks/*.png` (1-bit PNGs) + `constraints.yaml` (Keepout/VirtualWall/SpotArea geometry) + `keepout_mask.pgm`/`.yaml` (Nav2 trinary mask, preview only).
+- `published/`: Same structure as draft; atomically switched via symlink pointers. Only the published generation's `keepout_mask` is served to Nav2.
 - At most one Published Region Set exists per map at any time.
 
 ### 7. Spatial constraints and Spot Area persistence
 
 - **ConstraintSet**: Holds negative spatial constraints (`Keepout` polygons, `VirtualWall` center-lines dilated by physical width) and an optional positive transient target (`SpotArea` polygon).
 - **Keepouts / Virtual Walls**: Deducted from cleanable space (`free_mask & ~keepout_mask`). Adding/updating constraints immediately clips existing Region cells.
+- **Keepout margin**: `ConstraintSet.mask_for(source_map, keepout_margin_m)` optionally dilates Keepout rasters by a circular metric margin (default 0 = exact cell-center rasterization) for deployments requiring the whole robot footprint — not just its center — to stay out of a Keepout. Virtual Wall bands never take the margin.
 - **Spot Area**: Stored at the same spatial constraint layer (`constraints.yaml`), retaining the single last-used spot area across sessions without modifying persistent room partitions.
 
-### 8. Cleaning target configuration (whole-map, selected regions, spot cleaning)
+### 8. Nav2 keepout filter projection
+
+Constraints take effect in navigation only at publish time (drafts are preview-only):
+
+- **Mechanism**: standard Nav2 `nav2_costmap_2d::KeepoutFilter` in the global and local costmaps (see `src/oomwoo_cleaning_jobs/config/nav2_keepout.yaml`). The filter plugin must be listed **after** `inflation_layer` in the `plugins` list: filters apply in plugin-list order, and placed last their lethal mask cells are not expanded by inflation. `override_lethal_cost: true` lets a robot that somehow stands on a keepout cell navigate out instead of deadlocking.
+- **Mask content**: only explicit constraints (Keepout polygons, possibly with `keepout_margin_m`, plus Virtual Wall bands). The enclosed area behind sealing walls is deliberately **not** marked: it is unreachable by navigation topology, so goals there fail planning naturally, and a robot inside it never stands on a lethal cell.
+- **Materialization**: `RegionSetStore` writes `keepout_mask.pgm`/`.yaml` (Nav2 trinary convention, Source Map geometry) in the same atomic generation as `constraints.yaml`, so geometry source and mask can never diverge.
+- **Serving**: the `constraint_mask_publisher` node publishes latched (transient local + reliable) `/costmap_filter_info` (type 0 = keepout, naming the mask topic) **before** `/keepout_filter_mask` (`nav_msgs/OccupancyGrid`, 100 = constraint cell), reloads via `std_srvs/Trigger` `reload_keepout_mask`, and treats a missing published mask at startup as an explicit degraded state (ERROR log, nothing published).
+- **Publish transaction**: `RegionSetStore.publish(..., seed_pose=..., post_publish_hook=...)` validates (dock-seeded when a seed is given), atomically switches the published generation, then invokes the hook (reload); a hook failure rolls the published pointer back and raises `PublishError` — disk and Nav2 never diverge silently.
+- **Dock pose**: read-only from the Nav2 `opennav_docking` dock database (`dock.load_dock_pose`); the undock exit pose (`dock.staging_pose`) seeds reachability validation. Without a dock database the global fallback applies.
+
+Known limitations: the upstream dock-cycle module is still RFC-stage, so no dock database exists yet and the fallback path is the only one exercised in current environments; the reload rollback covers the file layer, and a mid-reload Nav2 may briefly serve the previous mask (acceptable window).
+
+### 9. Cleaning target configuration (whole-map, selected regions, spot cleaning)
 
 The cleaning mode configuration layer in `oomwoo_cleaning_jobs_core.targets` bridges user intent to downstream task orchestration:
 - **Unified interface**: All modes produce a `CleaningTarget` containing `target_labels: tuple[int, ...]` and a runtime `RegionSet` view. Downstream modules query `target.mask_of(label)` or `target.outline(label)` uniformly without branching on mode type.
@@ -202,6 +224,5 @@ All 6 demo maps achieve 100% cleanable free space coverage (0 unassigned cleanab
 4. **Checkpoint serialization**: Schema and storage strategy for atomic Job state persistence across robot reboots.
 5. **Segment partitioning**: Splitting large Regions into Segments based on area, battery budget, or cleaning strategy.
 6. **Floor-care coordination**: Sequencing perimeter edge cleaning with interior coverage sweeping.
-7. **Costmap constraint projection**: Mechanism for projecting Keepouts/Virtual Walls to Nav2 costmaps during active Jobs.
-8. **Job action interface**: Action definitions for `RunCleaningJob`, pause, resume, cancel, and status feedback.
-9. **Map change policy**: Re-validation and user notification workflow when a map hash change is detected.
+7. **Job action interface**: Action definitions for `RunCleaningJob`, pause, resume, cancel, and status feedback.
+8. **Map change policy**: Re-validation and user notification workflow when a map hash change is detected.
