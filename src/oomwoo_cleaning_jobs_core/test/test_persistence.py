@@ -1,5 +1,7 @@
 """Tests for local persistence of draft / published Region Sets."""
 
+import math
+
 import cv2
 import numpy as np
 import pytest
@@ -7,9 +9,26 @@ import yaml
 
 from fixtures import fake_segmentation, make_two_rooms_map
 
-from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout, SpotArea
-from oomwoo_cleaning_jobs_core.persistence import RegionSetStore
+from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout, SpotArea, VirtualWall
+from oomwoo_cleaning_jobs_core.persistence import PublishError, RegionSetStore
 from oomwoo_cleaning_jobs_core.regions import RegionSet
+
+
+def _map_point(source, row, col):
+    """Map-frame center point of a given cell, honoring the SourceMap yaw."""
+    x, y, yaw = source.origin
+    local_x = (col + 0.5) * source.resolution
+    local_y = (row + 0.5) * source.resolution
+    return (
+        x + math.cos(yaw) * local_x - math.sin(yaw) * local_y,
+        y + math.sin(yaw) * local_x + math.cos(yaw) * local_y,
+    )
+
+
+def _sealing_constraints(source):
+    return ConstraintSet(
+        virtual_walls=(VirtualWall('door-seal', _map_point(source, 34, 30),
+                                   _map_point(source, 45, 30), source.resolution),))
 
 
 def _draft(source, constraints=ConstraintSet()):
@@ -146,4 +165,92 @@ def test_spot_area_persists_in_constraints_round_trip(tmp_path):
     loaded_pub = store.load_published(source)
     assert loaded_pub is not None
     assert loaded_pub.constraints.spot_area == spot
+
+
+def test_publish_writes_nav2_compatible_keepout_mask(tmp_path):
+    source = make_two_rooms_map()
+    constraints = ConstraintSet(
+        keepouts=(Keepout('table', ((-2.0, 0.0), (-1.8, 0.0),
+                                    (-1.8, 0.2), (-2.0, 0.2))),))
+    store = RegionSetStore(tmp_path)
+    store.publish(source, _draft(source, constraints), constraints)
+
+    published = tmp_path / source.identity / 'published'
+    image_path = published / 'keepout_mask.pgm'
+    yaml_path = published / 'keepout_mask.yaml'
+    assert image_path.is_file() and yaml_path.is_file()
+
+    metadata = yaml.safe_load(yaml_path.read_text(encoding='utf-8'))
+    assert metadata['image'] == 'keepout_mask.pgm'
+    assert metadata['resolution'] == source.resolution
+    assert metadata['origin'] == list(source.origin)
+    assert metadata['negate'] == 0
+    assert metadata['mode'] == 'trinary'
+
+    # Read back with the Nav2 trinary convention: occ = 1 - color / 255.
+    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)[::-1, :]
+    occ = 1.0 - image.astype(np.float64) / 255.0
+    loaded_mask = occ >= metadata['occupied_thresh']
+    assert np.array_equal(loaded_mask, constraints.mask_for(source))
+    # Non-constraint cells must read as free, never as unknown.
+    free_occ = occ[~constraints.mask_for(source)]
+    assert (free_occ <= metadata['free_thresh']).all()
+
+
+def test_draft_writes_keepout_mask_for_preview(tmp_path):
+    source = make_two_rooms_map()
+    store = RegionSetStore(tmp_path)
+    draft = store.save_draft(source, _draft(source), ConstraintSet())
+    assert (draft / 'keepout_mask.pgm').is_file()
+    assert (draft / 'keepout_mask.yaml').is_file()
+
+
+def test_publish_records_margin_and_seed_pose_in_metadata(tmp_path):
+    source = make_two_rooms_map()
+    store = RegionSetStore(tmp_path)
+    seed = _map_point(source, 40, 15)
+    store.publish(source, _draft(source), ConstraintSet(),
+                  seed_pose=seed, keepout_margin_m=0.1)
+    published = tmp_path / source.identity / 'published'
+    metadata = yaml.safe_load((published / 'regions.yaml').read_text(encoding='utf-8'))
+    assert metadata['keepout_margin_m'] == 0.1
+    assert metadata['seed_pose'] == [pytest.approx(seed[0]), pytest.approx(seed[1])]
+
+
+def test_publish_with_seed_pose_blocks_enclosure(tmp_path):
+    source = make_two_rooms_map()
+    constraints = _sealing_constraints(source)
+    store = RegionSetStore(tmp_path)
+
+    with pytest.raises(ValueError, match='region_enclosed'):
+        store.publish(source, _draft(source, constraints), constraints,
+                      seed_pose=_map_point(source, 40, 15))
+
+    # The validation failure happens before any write: no published set exists.
+    assert not (tmp_path / source.identity / 'published').exists()
+
+    # Without a seed the same content publishes fine (global semantics).
+    store.publish(source, _draft(source, constraints), constraints)
+    assert (tmp_path / source.identity / 'published').is_dir()
+
+
+def test_publish_rolls_back_when_post_publish_hook_fails(tmp_path):
+    source = make_two_rooms_map()
+    store = RegionSetStore(tmp_path)
+    store.publish(source, _draft(source), ConstraintSet())
+
+    def failing_hook(_target):
+        raise RuntimeError('mask publisher unreachable')
+
+    with pytest.raises(PublishError, match='rolled back'):
+        store.publish(source, _draft(source), ConstraintSet(),
+                      post_publish_hook=failing_hook)
+
+    loaded = store.load_published(source)
+    assert loaded is not None
+    assert loaded.version == 1  # pointer restored to the first generation
+
+    # A subsequent publish without a failing hook recovers cleanly.
+    recovered = store.publish(source, _draft(source), ConstraintSet())
+    assert recovered.version == 2
 

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import uuid
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -21,6 +22,11 @@ from .validation import check_masks_overlap, validate_region_set
 
 DEFAULT_STORAGE_ROOT = Path.home() / '.local/share/oomwoo_cleaning_jobs/maps'
 SCHEMA_VERSION = 1
+
+
+class PublishError(RuntimeError):
+    """The published generation was written but a post-publish step failed;
+    the published pointer has been rolled back to the previous generation."""
 
 
 @dataclass(frozen=True)
@@ -40,14 +46,17 @@ class RegionSetStore:
     def save_draft(
         self, source_map: SourceMap, region_set: RegionSet,
         constraints: ConstraintSet,
+        keepout_margin_m: float = 0.0,
     ) -> Path:
         """Atomically replace the current map's draft; a draft may contain
-        content that has not passed publish validation yet."""
+        content that has not passed publish validation yet. The keepout mask
+        files are materialized for preview only - Nav2 reads published only."""
         map_dir = self._map_dir(source_map)
         map_dir.mkdir(parents=True, exist_ok=True)
         self._write_snapshot(map_dir, source_map)
         target = map_dir / 'draft'
-        self._write_set(target, source_map, region_set, constraints)
+        self._write_set(target, source_map, region_set, constraints,
+                        keepout_margin_m=keepout_margin_m)
         return target
 
     def load_draft(self, source_map: SourceMap) -> StoredRegionSet | None:
@@ -68,23 +77,51 @@ class RegionSetStore:
         self, source_map: SourceMap, region_set: RegionSet,
         constraints: ConstraintSet,
         robot_inscribed_radius: float = 0.17,
+        seed_pose: tuple[float, float] | None = None,
+        keepout_margin_m: float = 0.0,
+        post_publish_hook: Callable[[Path], None] | None = None,
     ) -> StoredRegionSet:
         """Save the draft after validation, then atomically replace the single
-        published Region Set."""
-        keepout_mask = constraints.mask_for(source_map)
-        report = validate_region_set(region_set, robot_inscribed_radius, keepout_mask)
+        published Region Set.
+
+        ``seed_pose`` (dock staging pose, map frame) enables dock-relative
+        reachability validation (enclosure / dock-trap detection).
+        ``post_publish_hook`` runs after the published pointer switches
+        (e.g. notifying the Nav2 keepout-mask publisher to reload); when it
+        raises, the pointer is rolled back to the previous generation and a
+        PublishError is raised, so disk and Nav2 never diverge silently.
+        """
+        keepout_mask = constraints.mask_for(source_map, keepout_margin_m)
+        wall_band_mask = ConstraintSet(
+            virtual_walls=constraints.virtual_walls).mask_for(source_map)
+        report = validate_region_set(
+            region_set, robot_inscribed_radius, keepout_mask,
+            seed_pose=seed_pose, wall_band_mask=wall_band_mask)
         if not report.ok:
             codes = ', '.join(issue.code for issue in report.errors)
             raise ValueError(f'cannot publish Region Set: {codes}')
 
-        self.save_draft(source_map, region_set, constraints)
+        self.save_draft(source_map, region_set, constraints, keepout_margin_m)
         map_dir = self._map_dir(source_map)
         target = map_dir / 'published'
         prior = self._load_set(target, source_map) if target.is_dir() else None
         version = 1 if prior is None or prior.version is None else prior.version + 1
         published_at = datetime.now(timezone.utc).isoformat()
+        previous_generation = target.resolve() if target.is_symlink() else None
         self._write_set(target, source_map, region_set, constraints, version, published_at,
-                        robot_inscribed_radius)
+                        robot_inscribed_radius, keepout_margin_m, seed_pose,
+                        prune_old_generation=post_publish_hook is None)
+        if post_publish_hook is not None:
+            try:
+                post_publish_hook(target)
+            except Exception as error:
+                _restore_generation_pointer(target, previous_generation)
+                raise PublishError(
+                    f'post-publish step failed, published set rolled back: {error}') from error
+            generations = target.parent / '.generations'
+            if (previous_generation is not None
+                    and previous_generation.parent == generations):
+                shutil.rmtree(previous_generation, ignore_errors=True)
         return StoredRegionSet(region_set, constraints, version, published_at)
 
     def load_published(self, source_map: SourceMap) -> StoredRegionSet | None:
@@ -124,6 +161,9 @@ class RegionSetStore:
         constraints: ConstraintSet, version: int | None = None,
         published_at: str | None = None,
         robot_inscribed_radius: float | None = None,
+        keepout_margin_m: float = 0.0,
+        seed_pose: tuple[float, float] | None = None,
+        prune_old_generation: bool = True,
     ) -> None:
         if region_set.labels.shape != source_map.cells.shape:
             raise ValueError('RegionSet and SourceMap grid shapes differ')
@@ -146,9 +186,14 @@ class RegionSetStore:
                 metadata['version'] = version
                 metadata['published_at'] = published_at
                 metadata['robot_inscribed_radius'] = robot_inscribed_radius
+                metadata['keepout_margin_m'] = keepout_margin_m
+                if seed_pose is not None:
+                    metadata['seed_pose'] = [float(seed_pose[0]), float(seed_pose[1])]
             _atomic_yaml_dump(temp / 'regions.yaml', metadata)
             _atomic_yaml_dump(temp / 'constraints.yaml', _encode_constraints(constraints))
-            _replace_active_generation(temp, target)
+            _write_keepout_mask(temp, source_map,
+                                constraints.mask_for(source_map, keepout_margin_m))
+            _replace_active_generation(temp, target, prune_old=prune_old_generation)
         except BaseException:
             shutil.rmtree(temp, ignore_errors=True)
             raise
@@ -262,9 +307,48 @@ def _atomic_yaml_dump(path: Path, data: dict) -> None:
     os.replace(temp, path)
 
 
-def _replace_active_generation(temp: Path, target: Path) -> None:
+def _write_keepout_mask(directory: Path, source_map: SourceMap, keepout_mask: np.ndarray) -> None:
+    """Materialize the keepout mask as a Nav2-compatible trinary map
+    (``keepout_mask.pgm`` + ``keepout_mask.yaml``) inside a generation dir.
+
+    Constraint cells become black pixels (occ = 1.0 -> 100, LETHAL for the
+    Nav2 KeepoutFilter); all other cells become white (free). The grid shares
+    the Source Map geometry, so resolution and origin (including yaw) are
+    copied verbatim and the image is vertically flipped like any map_saver
+    PGM. The enclosed area behind Virtual Walls is deliberately NOT marked:
+    it is unreachable by navigation topology, not an explicit keepout.
+    """
+    image_path = directory / 'keepout_mask.pgm'
+    pixels = np.full(keepout_mask.shape, 255, dtype=np.uint8)
+    pixels[keepout_mask] = 0
+    if not cv2.imwrite(str(image_path), pixels[::-1, :]):
+        raise OSError(f'failed to write keepout mask {image_path}')
+    metadata = {
+        'image': image_path.name,
+        'resolution': source_map.resolution,
+        'origin': list(source_map.origin), 'negate': 0,
+        'occupied_thresh': 0.65, 'free_thresh': 0.196, 'mode': 'trinary',
+    }
+    _atomic_yaml_dump(directory / 'keepout_mask.yaml', metadata)
+
+
+def _restore_generation_pointer(target: Path, previous_generation: Path | None) -> None:
+    """Roll back an atomic generation switch after a failed post-publish step."""
+    current = target.resolve() if target.is_symlink() else None
+    if previous_generation is not None and previous_generation.is_dir():
+        pointer = target.parent / f'.{target.name}-pointer-{uuid.uuid4().hex}'
+        os.symlink(os.path.relpath(previous_generation, target.parent), pointer)
+        os.replace(pointer, target)
+    elif target.is_symlink():
+        target.unlink()
+    if current is not None and current != previous_generation and current.is_dir():
+        shutil.rmtree(current, ignore_errors=True)
+
+
+def _replace_active_generation(temp: Path, target: Path, prune_old: bool = True) -> None:
     """Switch immutable generations via an atomic symlink pointer, so a crash
-    always leaves one usable version."""
+    always leaves one usable version. With prune_old=False the previous
+    generation is kept so the caller can roll the pointer back."""
     generations = target.parent / '.generations'
     generations.mkdir(exist_ok=True)
     generation = generations / f'{target.name}-{uuid.uuid4().hex}'
@@ -279,5 +363,5 @@ def _replace_active_generation(temp: Path, target: Path) -> None:
     pointer = target.parent / f'.{target.name}-pointer-{uuid.uuid4().hex}'
     os.symlink(os.path.relpath(generation, target.parent), pointer)
     os.replace(pointer, target)
-    if old_generation is not None and old_generation.parent == generations:
+    if prune_old and old_generation is not None and old_generation.parent == generations:
         shutil.rmtree(old_generation, ignore_errors=True)

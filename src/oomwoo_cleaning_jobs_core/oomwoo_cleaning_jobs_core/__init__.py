@@ -14,7 +14,8 @@ from oomwoo_segmentation.source_map import (
 )
 
 from .constraints import ConstraintSet, Keepout, SpotArea, VirtualWall
-from .persistence import RegionSetStore, StoredRegionSet
+from .dock import DEFAULT_STAGING_OFFSET_M, load_dock_pose, staging_pose
+from .persistence import PublishError, RegionSetStore, StoredRegionSet
 from .targets import (
     CleaningTarget,
     configure_last_spot_area,
@@ -31,6 +32,10 @@ __all__ = [
     'SpotArea',
     'RegionSetStore',
     'StoredRegionSet',
+    'PublishError',
+    'load_dock_pose',
+    'staging_pose',
+    'DEFAULT_STAGING_OFFSET_M',
     'CleaningTarget',
     'configure_whole_map',
     'configure_selected_regions',
