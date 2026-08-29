@@ -157,6 +157,14 @@ Constraints take effect in navigation only at publish time (drafts are preview-o
 - **Publish transaction**: `RegionSetStore.publish(..., seed_pose=..., post_publish_hook=...)` validates (dock-seeded when a seed is given), atomically switches the published generation, then invokes the hook (reload); a hook failure rolls the published pointer back and raises `PublishError` — disk and Nav2 never diverge silently.
 - **Dock pose**: read-only from the Nav2 `opennav_docking` dock database (`dock.load_dock_pose`); the undock exit pose (`dock.staging_pose`) seeds reachability validation. Without a dock database the global fallback applies.
 
+Public interface contract (to be registered in upstream `docs/SOFTWARE_INTERFACES.md` when contributed):
+
+| Interface | Type | Producer | Consumer | QoS | Failure behavior |
+| --- | --- | --- | --- | --- | --- |
+| `/costmap_filter_info` | `nav2_msgs/msg/CostmapFilterInfo` (`type: 0` = keepout, names the mask topic) | `constraint_mask_publisher` | Nav2 global/local costmap `KeepoutFilter` | Transient local + reliable (latched); always published before the mask | Absent at startup: filters run without constraints (degraded; publisher logs ERROR). Mid-reload: filters may briefly keep the previous mask (acceptable window). |
+| `/keepout_filter_mask` | `nav_msgs/msg/OccupancyGrid` (100 = constraint cell, Source Map geometry) | `constraint_mask_publisher` | Nav2 global/local costmap `KeepoutFilter` | Transient local + reliable (latched) | Same as above; mask and info are republished together on every reload. |
+| `reload_keepout_mask` | `std_srvs/srv/Trigger` | `constraint_mask_publisher` (server) | Publish transaction (`post_publish_hook`), operators | Service | `success: false` → publish rolls the published pointer back and raises `PublishError`; Nav2 keeps the previous mask, disk and Nav2 stay consistent. |
+
 Known limitations: the upstream dock-cycle module is still RFC-stage, so no dock database exists yet and the fallback path is the only one exercised in current environments; the reload rollback covers the file layer, and a mid-reload Nav2 may briefly serve the previous mask (acceptable window).
 
 ### 9. Cleaning target configuration (whole-map, selected regions, spot cleaning)
