@@ -1,0 +1,38 @@
+# Nav2 costmap keepout filter configuration for OOMWOO constraint projection.
+#
+# Merge these plugin entries into the global and local costmap parameters.
+# CRITICAL: the keepout filter must be listed AFTER the inflation layer in
+# the plugins list. Costmap filters are applied in plugin-list order; placed
+# last, the filter overwrites final costs and its lethal mask cells are NOT
+# expanded by the inflation layer (they are already rasterized with any
+# desired margin by oomwoo_cleaning_jobs_core).
+#
+# override_lethal_cost: when the robot somehow ends up standing on a keepout
+# cell, the filter reduces the cost so the planner can navigate it out
+# instead of deadlocking (safety net; publish-time validation already
+# prevents publishing constraints that would trap the robot).
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer", "keepout_filter"]
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        filter_info_topic: "/costmap_filter_info"
+        override_lethal_cost: true
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      plugins: ["obstacle_layer", "inflation_layer", "keepout_filter"]
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        filter_info_topic: "/costmap_filter_info"
+        override_lethal_cost: true
+
+# The mask and filter-info messages are served by the
+# oomwoo_cleaning_jobs/constraint_mask_publisher node with latched
+# (transient local, reliable) QoS, matching the filter's subscription:
+#
+#   ros2 run oomwoo_cleaning_jobs constraint_mask_publisher --ros-args \
+#     -p map_hash:=<source-map-identity-hash>
