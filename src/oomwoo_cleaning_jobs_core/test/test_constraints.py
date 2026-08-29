@@ -2,10 +2,11 @@
 
 import math
 
+import cv2
 import numpy as np
 import pytest
 
-from fixtures import fake_segmentation, make_two_rooms_map
+from fixtures import fake_segmentation, make_open_room_map, make_two_rooms_map
 
 from oomwoo_cleaning_jobs_core.constraints import ConstraintSet, Keepout, SpotArea, VirtualWall
 from oomwoo_cleaning_jobs_core.regions import UNASSIGNED, RegionSet
@@ -162,6 +163,88 @@ def test_spot_area_creation_and_rasterization():
     assert spot_mask is not None
     assert spot_mask[30, 20]
     assert not spot_mask[10, 10]
+
+
+def _flood_component(free_mask: np.ndarray, seed: tuple[int, int]) -> np.ndarray:
+    """Boolean mask of the 4-connected free-space component containing seed (row, col)."""
+    _, labels = cv2.connectedComponents(free_mask.astype(np.uint8), connectivity=4)
+    return labels == labels[seed]
+
+
+def test_virtual_wall_band_seals_doorway_for_4_connected_flood():
+    """A wall band across the doorway blocks a 4-connected flood fill between rooms."""
+    source = make_two_rooms_map()
+    constraints = ConstraintSet(
+        virtual_walls=(VirtualWall('door-seal', _map_point(source, 34, 30),
+                                   _map_point(source, 45, 30), source.resolution),))
+    band = constraints.mask_for(source)
+
+    # The band itself is a single 8-connected component.
+    count, _ = cv2.connectedComponents(band.astype(np.uint8), connectivity=8)
+    assert count == 2  # one band plus background
+
+    free = source.free_mask() & ~band
+    left_room = _flood_component(free, (40, 15))
+    assert left_room[40, 15]
+    assert not left_room[40, 50]
+
+
+def test_diagonal_virtual_wall_seals_without_diagonal_leak():
+    """A diagonal wall from boundary to boundary splits an open room with no leak."""
+    source = make_open_room_map()
+    constraints = ConstraintSet(
+        virtual_walls=(VirtualWall('diagonal', _map_point(source, 1, 20),
+                                   _map_point(source, 38, 40), source.resolution),))
+    band = constraints.mask_for(source)
+
+    # Sanity: without the wall the two probe cells are mutually reachable.
+    assert _flood_component(source.free_mask(), (5, 5))[35, 55]
+
+    free = source.free_mask() & ~band
+    side = _flood_component(free, (5, 5))
+    assert side[5, 5]
+    assert not side[35, 55]
+
+
+def test_keepout_margin_dilates_keepouts_but_not_walls():
+    source = make_two_rooms_map()
+    keepouts = ConstraintSet(
+        keepouts=(Keepout('table', _cell_box(source, 40, 15, radius_cells=2)),))
+
+    exact = keepouts.mask_for(source)
+    widened = keepouts.mask_for(source, keepout_margin_m=2 * source.resolution)
+
+    # Exact raster covers cells 13..17 around the keepout center.
+    assert exact[40, 13]
+    assert not exact[40, 11]
+    # A 2-cell circular margin extends coverage to cells 11..19, not further.
+    assert widened[40, 11]
+    assert not widened[40, 9]
+
+    # The wall band is unaffected by the margin.
+    walls = ConstraintSet(
+        virtual_walls=(VirtualWall('door-barrier', _map_point(source, 40, 10),
+                                   _map_point(source, 40, 24), source.resolution),))
+    assert np.array_equal(walls.mask_for(source),
+                          walls.mask_for(source, keepout_margin_m=2 * source.resolution))
+
+
+def test_keepout_margin_defaults_to_exact_rasterization():
+    source = make_two_rooms_map()
+    constraints = ConstraintSet(
+        keepouts=(Keepout('table', _cell_box(source, 40, 15, radius_cells=2)),))
+    assert np.array_equal(constraints.mask_for(source),
+                          constraints.mask_for(source, keepout_margin_m=0.0))
+
+
+def test_keepout_margin_rejects_negative_or_non_finite():
+    source = make_two_rooms_map()
+    constraints = ConstraintSet(
+        keepouts=(Keepout('table', _cell_box(source, 40, 15, radius_cells=2)),))
+    with pytest.raises(ValueError, match='non-negative'):
+        constraints.mask_for(source, keepout_margin_m=-0.1)
+    with pytest.raises(ValueError, match='non-negative'):
+        constraints.mask_for(source, keepout_margin_m=float('nan'))
 
 
 def test_spot_area_validation_and_identifier_uniqueness():

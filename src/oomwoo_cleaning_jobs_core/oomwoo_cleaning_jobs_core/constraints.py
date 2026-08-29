@@ -5,6 +5,11 @@ follows the ``SourceMap`` convention that row 0 is the map's minimum y, and
 honors the origin yaw. A Keepout is a polygon; a Virtual Wall is a linear
 Keepout dilated by an explicit width. A Spot Area is a positive transient target
 polygon retained at the constraint layer.
+
+Virtual Walls are sealing barriers: they are rasterized as 8-connected bands
+so that a closed wall chain provably blocks a 4-connected flood fill over the
+remaining free space (grid Jordan curve property). Keepouts may optionally be
+dilated by a configurable metric margin; Virtual Walls never take that margin.
 """
 
 from __future__ import annotations
@@ -184,13 +189,26 @@ class ConstraintSet:
             spot_area=spot_area,
         )
 
-    def mask_for(self, source_map: SourceMap) -> np.ndarray:
-        """Return the union mask of all Keepouts (negative constraints), same shape as the SourceMap."""
+    def mask_for(self, source_map: SourceMap, keepout_margin_m: float = 0.0) -> np.ndarray:
+        """Return the union mask of all negative constraints, same shape as the SourceMap.
+
+        Keepout polygons use cell-center rasterization, optionally dilated by
+        a circular ``keepout_margin_m`` (meters, default 0 = exact). The
+        margin exists for deployments that require the whole robot footprint
+        -- not just its center -- to stay out of a Keepout. Virtual Wall
+        bands never take the margin: a wall's purpose is to seal an opening,
+        not to mark a precise boundary.
+        """
+        margin = float(keepout_margin_m)
+        if not math.isfinite(margin) or margin < 0.0:
+            raise ValueError('keepout_margin_m must be a non-negative finite value')
         mask = np.zeros(source_map.cells.shape, dtype=bool)
         for keepout in self.keepouts:
             mask |= _rasterize_polygon(keepout.vertices, source_map)
+        if margin > 0.0 and mask.any():
+            mask = _dilate_mask(mask, margin, source_map.resolution)
         for wall in self.virtual_walls:
-            mask |= _rasterize_polygon(wall.polygon, source_map)
+            mask |= _rasterize_wall_band(wall, source_map)
         return mask
 
     def spot_mask_for(self, source_map: SourceMap) -> np.ndarray | None:
@@ -200,25 +218,56 @@ class ConstraintSet:
         return _rasterize_polygon(self.spot_area.vertices, source_map)
 
 
-def _rasterize_polygon(vertices: tuple[Point, ...], source_map: SourceMap) -> np.ndarray:
-    """Rasterize a map-frame polygon, covering cells whose centers lie
-    inside it (boundary included)."""
+def _map_to_pixel(point: Point, source_map: SourceMap) -> tuple[float, float]:
+    """Map-frame point -> fractional OpenCV pixel (col, row), cell-center convention."""
     ox, oy, yaw = source_map.origin
     cos_yaw = math.cos(yaw)
     sin_yaw = math.sin(yaw)
-    # map frame -> map-local frame; then convert cell-center coordinates to
-    # OpenCV pixel centers.
-    local = []
-    for x, y in vertices:
-        dx, dy = x - ox, y - oy
-        local_x = cos_yaw * dx + sin_yaw * dy
-        local_y = -sin_yaw * dx + cos_yaw * dy
-        local.append((local_x / source_map.resolution - 0.5,
-                      local_y / source_map.resolution - 0.5))
+    dx, dy = point[0] - ox, point[1] - oy
+    local_x = cos_yaw * dx + sin_yaw * dy
+    local_y = -sin_yaw * dx + cos_yaw * dy
+    return (local_x / source_map.resolution - 0.5,
+            local_y / source_map.resolution - 0.5)
 
+
+def _dilate_mask(mask: np.ndarray, margin_m: float, resolution: float) -> np.ndarray:
+    """Dilate a boolean mask by a circular margin in meters."""
+    radius_px = int(math.ceil(margin_m / resolution))
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (2 * radius_px + 1, 2 * radius_px + 1))
+    return cv2.dilate(mask.astype(np.uint8), kernel).astype(bool)
+
+
+def _rasterize_wall_band(wall: VirtualWall, source_map: SourceMap) -> np.ndarray:
+    """Rasterize a Virtual Wall as an 8-connected band.
+
+    The band is the union of the wall's ``width_m`` rectangle (same
+    cell-center semantics as Keepouts) and a 1-cell 8-connected spine along
+    its center line. The spine guarantees that a closed chain of walls has
+    no diagonal gaps, so a 4-connected flood fill over the remaining free
+    space cannot leak through (grid Jordan curve property). For walls
+    narrower than one cell this may widen the band slightly beyond the
+    strict ``width_m`` rectangle; walls are sealing barriers, not precise
+    boundaries, so the widening is intentional.
+    """
+    band = _rasterize_polygon(wall.polygon, source_map)
+    shift = 16
+    start = _map_to_pixel(wall.start, source_map)
+    end = _map_to_pixel(wall.end, source_map)
+    pt1 = (int(round(start[0] * (1 << shift))), int(round(start[1] * (1 << shift))))
+    pt2 = (int(round(end[0] * (1 << shift))), int(round(end[1] * (1 << shift))))
+    spine = np.zeros(source_map.cells.shape, dtype=np.uint8)
+    cv2.line(spine, pt1, pt2, color=1, thickness=1, lineType=cv2.LINE_8, shift=shift)
+    return band | spine.astype(bool)
+
+
+def _rasterize_polygon(vertices: tuple[Point, ...], source_map: SourceMap) -> np.ndarray:
+    """Rasterize a map-frame polygon, covering cells whose centers lie
+    inside it (boundary included)."""
     # shift avoids whole-pixel rounding offsetting small polygons by one cell;
     # OpenCV (x, y) is (col, row).
     shift = 16
+    local = [_map_to_pixel(vertex, source_map) for vertex in vertices]
     polygon = np.rint(np.asarray(local, dtype=np.float64) * (1 << shift)).astype(np.int32)
     raster = np.zeros(source_map.cells.shape, dtype=np.uint8)
     cv2.fillPoly(raster, [polygon], color=1, lineType=cv2.LINE_8, shift=shift)
